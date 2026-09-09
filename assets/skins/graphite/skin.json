@@ -1,0 +1,13 @@
+{
+  "id": "graphite",
+  "name": "Graphite",
+  "version": 1,
+  "colors": {
+    "window_bg": "#17191d", "panel_bg": "#22252b", "panel_bg_alt": "#2b2f36",
+    "border": "#454b55", "border_active": "#6da5d5", "text_primary": "#f0f2f4",
+    "text_secondary": "#aeb5be", "accent": "#6da5d5", "accent_secondary": "#88b9df",
+    "success": "#74c69d", "warning": "#e5b567", "danger": "#e67878", "disabled": "#626a75"
+  },
+  "layout": { "window_radius": 12, "card_radius": 10, "card_spacing": 10, "outer_margin": 16 },
+  "effects": { "glow": true, "glow_strength": 0.12 }
+}

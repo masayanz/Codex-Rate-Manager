@@ -7,56 +7,20 @@ import time
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
+    QCheckBox, QComboBox, QScrollArea, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar,
     QPushButton, QSpinBox, QSystemTrayIcon, QTabWidget, QTableWidget,
-    QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QHeaderView,
+    QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QHeaderView, QSizePolicy,
 )
 
 from .storage import Config
+from .meters import RingMeter, SegmentBar, tray_icon
+from .resources import resource_path
+from .skin_manager import SkinManager, default_stylesheet
 
-COLORS = {"AVAILABLE": "#36bf91", "LOW": "#edbd5c", "LIMITED_5H": "#ef7180", "LIMITED_WEEKLY": "#ef7180", "LIMITED_OTHER": "#ef7180"}
+STYLE = default_stylesheet()
+
 LABELS = {"CONNECTING": "Codexへ接続しています...", "AVAILABLE": "Codex 使用可能", "LOW": "Codex 使用可能", "LIMITED_5H": "Codex 5時間レート上限", "LIMITED_WEEKLY": "Codex 週間レート上限", "LIMITED_OTHER": "Codex その他のレート上限", "WAITING_RESET": "リセットの確認待ち", "VERIFYING": "利用可能か確認しています...", "DISCONNECTED": "Codex情報を取得できません", "ERROR": "レート情報を確認できません"}
-
-STYLE = """
-QWidget { background: #101923; color: #e3edf5; font-family: 'Yu Gothic UI'; font-size: 14px; }
-QMainWindow, QDialog { background: #101923; }
-QLabel#eyebrow { color: #7e9cae; font-size: 12px; font-weight: 600; }
-QLabel#status { font-size: 26px; font-weight: 700; }
-QLabel#remaining { font-size: 34px; font-weight: 700; }
-QLabel#muted { color: #a2b6c5; }
-QFrame#card { background: #192735; border: 1px solid #2b4050; border-radius: 12px; }
-QFrame#card QLabel { background: transparent; }
-QPushButton { background: #223747; border: 1px solid #3b5567; border-radius: 6px; padding: 9px 14px; }
-QPushButton:hover { background: #304e61; }
-QPushButton:disabled { color: #70828e; }
-QPushButton#primary { background: #24876e; border-color: #36bf91; font-weight: 600; }
-QLineEdit, QSpinBox, QTextEdit, QTableWidget { background: #192735; border: 1px solid #3b5567; border-radius: 4px; padding: 6px; }
-QProgressBar { background: #2b3c49; border: none; border-radius: 5px; min-height: 10px; max-height: 10px; }
-QProgressBar::chunk { background: #36bf91; border-radius: 5px; }
-QTabWidget::pane { border: 1px solid #304656; }
-QTabBar::tab { background: #192735; padding: 10px 14px; }
-QTabBar::tab:selected { background: #2b4557; }
-QCheckBox { spacing: 8px; padding: 4px; }
-QHeaderView::section { background: #223747; padding: 8px; border: none; }
-QMenu { background: #192735; border: 1px solid #3b5567; }
-QMenu::item { padding: 8px 18px; }
-QMenu::item:selected { background: #304e61; }
-"""
-
-
-def icon_for(state):
-    pix = QPixmap(64, 64)
-    pix.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pix)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor("#152430"))
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawRoundedRect(1, 1, 62, 62, 16, 16)
-    painter.setBrush(QColor(COLORS.get(state, "#869baa")))
-    painter.drawEllipse(15, 15, 34, 34)
-    painter.end()
-    return QIcon(pix)
 
 
 def local_date(epoch):
@@ -79,12 +43,14 @@ def countdown(epoch):
 
 
 class RateCard(QFrame):
-    def __init__(self, title, subtitle):
+    def __init__(self, title, subtitle, skins):
         super().__init__()
         self.setObjectName("card")
+        self.skins = skins
         self.window = None
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(5)
         top = QHBoxLayout()
         top.addWidget(QLabel(title))
         label = QLabel(subtitle)
@@ -92,31 +58,42 @@ class RateCard(QFrame):
         top.addStretch()
         top.addWidget(label)
         layout.addLayout(top)
+        body = QHBoxLayout()
+        body.setSpacing(20)
+        self.gauge = RingMeter(skins)
+        body.addWidget(self.gauge)
+        details = QVBoxLayout()
+        details.setSpacing(5)
         self.remaining = QLabel("残り — %")
-        self.remaining.setObjectName("remaining")
-        layout.addWidget(self.remaining)
-        self.bar = QProgressBar()
-        self.bar.setTextVisible(False)
-        self.bar.setRange(0, 100)
-        self.bar.setValue(0)
-        layout.addWidget(self.bar)
+        self.remaining.hide()
         self.used = QLabel("使用率：未取得")
-        self.used.setObjectName("muted")
-        layout.addWidget(self.used)
+        details.addWidget(self.used)
+        self.bar = SegmentBar(skins)
+        details.addWidget(self.bar)
         self.reset = QLabel("次回リセット：未取得")
-        layout.addWidget(self.reset)
+        self.reset.setWordWrap(True)
+        self.reset.setObjectName("muted")
+        details.addWidget(self.reset)
         self.count = QLabel("あと —")
-        self.count.setObjectName("muted")
-        layout.addWidget(self.count)
+        self.count.setWordWrap(True)
+        details.addWidget(self.count)
+        body.addLayout(details, 1)
+        layout.addLayout(body)
+        self.stale = QLabel("最後に取得した値・再確認中")
+        self.stale.setObjectName("muted")
+        self.stale.hide()
+        layout.addWidget(self.stale)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
     def update_rate(self, window, stale=False):
         self.window = window
         self.remaining.setText(f"残り {window.remaining:g}%" if window else "残り — %")
-        self.bar.setValue(round(window.remaining) if window else 0)
-        color = "#738896" if stale or not window else "#ef7180" if window.remaining == 0 else "#edbd5c" if window.remaining <= 20 else "#36bf91"
-        self.bar.setStyleSheet(f"QProgressBar::chunk {{ background: {color}; border-radius: 5px; }}")
-        self.used.setText((f"使用率：{window.used_percent:g}%" if window else "使用率：未取得") + ("  ·  最後に取得した値" if stale else ""))
-        self.reset.setText("次回リセット：" + local_date(window.reset_at if window else None))
+        value = window.remaining if window and not stale else None
+        self.gauge.set_value(value)
+        self.bar.set_value(value)
+        self.used.setText(f"使用率：{window.used_percent:g}%" if window else "使用率：未取得")
+        self.stale.setVisible(bool(stale and window))
+        self.reset.setText("次回リセット：\n" + local_date(window.reset_at if window else None))
         self.tick()
 
     def tick(self):
@@ -130,68 +107,111 @@ class MainWindow(QMainWindow):
     diagnostics_requested = Signal()
     quit_requested = Signal()
 
-    def __init__(self, mock=False):
+    def __init__(self, mock=False, skins=None):
         super().__init__()
+        self.skins = skins or SkinManager()
+        self.position_manager = None
+        self.state = "CONNECTING"
         self.setWindowTitle("Codex Rate Manager" + (" — モック" if mock else ""))
-        self.resize(560, 710)
-        self.setMinimumWidth(480)
+        self.resize(520, 720)
+        self.setMaximumWidth(560)
         self.tray_enabled = True
         self.exiting = False
-        self.setWindowIcon(icon_for("CONNECTING"))
+        self.setWindowIcon(QIcon(str(resource_path("assets/app.ico"))))
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+        self.outer = QVBoxLayout(central)
+        self.outer.setSpacing(8)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        self.scroll.setWidget(content)
+        self.outer.addWidget(self.scroll, 1)
+        self.content_layout = layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         top = QHBoxLayout()
-        brand = QLabel("CODEX RATE MANAGER")
+        brand = QLabel("CODEX RATE MANAGER\nMONITOR • SYNC • NOTIFY")
         brand.setObjectName("eyebrow")
         top.addWidget(brand)
         top.addStretch()
-        small = QLabel("MOCK  /  開発モード" if mock else "RATE MONITOR  /  0.1")
+        small = QLabel("MOCK" if mock else "v0.1\nRATE MONITOR")
         small.setObjectName("eyebrow")
         top.addWidget(small)
         layout.addLayout(top)
+        status_panel = QFrame()
+        status_panel.setObjectName("card")
+        status_layout = QVBoxLayout(status_panel)
+        status_layout.setContentsMargins(14, 9, 14, 9)
+        status_layout.setSpacing(3)
         self.status = QLabel(LABELS["CONNECTING"])
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        self.description = QLabel("作業を再開できるタイミングをお知らせします。")
+        status_layout.addWidget(self.status)
+        self.description = QLabel("両方のレート枠を確認して、復帰をお知らせします。")
         self.description.setObjectName("muted")
         self.description.setWordWrap(True)
-        layout.addWidget(self.description)
-        self.five = RateCard("5時間レート", "5 HOUR WINDOW")
-        self.weekly = RateCard("週間レート", "WEEKLY WINDOW")
+        status_layout.addWidget(self.description)
+        layout.addWidget(status_panel)
+        self.five = RateCard("5時間レート", "5H WINDOW", self.skins)
+        self.weekly = RateCard("週間レート", "WEEKLY WINDOW", self.skins)
         layout.addWidget(self.five)
         layout.addWidget(self.weekly)
+        connection_panel = QFrame()
+        connection_panel.setObjectName("card")
+        connection_layout = QVBoxLayout(connection_panel)
+        connection_layout.setContentsMargins(14, 8, 14, 8)
+        connection_layout.setSpacing(3)
         self.connection = QLabel("Codex接続：接続待ち")
         self.connection.setWordWrap(True)
         self.connection.setObjectName("muted")
-        layout.addWidget(self.connection)
+        connection_layout.addWidget(self.connection)
         self.updated = QLabel("最終更新：—")
         self.updated.setObjectName("muted")
-        layout.addWidget(self.updated)
-        buttons = QHBoxLayout()
+        connection_layout.addWidget(self.updated)
+        layout.addWidget(connection_panel)
+        self.toolbar = QWidget()
+        buttons = QHBoxLayout(self.toolbar)
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(6)
         for text, signal in (("今すぐ更新", self.refresh), ("履歴", self.history_requested), ("設定", self.settings_requested), ("診断", self.diagnostics_requested)):
             button = QPushButton(text)
             if text == "今すぐ更新":
                 button.setObjectName("primary")
             button.clicked.connect(signal.emit)
             buttons.addWidget(button)
-        layout.addLayout(buttons)
+        self.outer.addWidget(self.toolbar)
+        self.skins.skin_changed.connect(self.apply_skin)
+        self.apply_skin()
+
+    def apply_skin(self, *args):
+        tokens = self.skins.tokens
+        margin = tokens.layout("outer_margin", 18)
+        self.outer.setContentsMargins(margin, margin, margin, margin)
+        self.content_layout.setSpacing(tokens.layout("card_spacing", 10))
+        self.status.setStyleSheet(f"color: {tokens.state_color(self.state)};")
+        self.update()
 
     def update_status(self, snapshot, state, detail):
         self.status.setText("● " + LABELS.get(state, state))
-        self.status.setStyleSheet(f"color: {COLORS.get(state, '#92a8b6')};")
+        self.state = state
+        self.apply_skin()
         self.description.setText("レート残量が少なくなっています。" if state == "LOW" else "接続前の値は利用可能判定に使いません。" if state == "DISCONNECTED" else "両方のレート枠を確認して、復帰をお知らせします。")
         stale = state in ("DISCONNECTED", "CONNECTING", "ERROR", "VERIFYING")
         self.five.update_rate(snapshot.five_hour if snapshot else None, stale)
         self.weekly.update_rate(snapshot.weekly if snapshot else None, stale)
-        self.connection.setText("Codex接続：" + detail)
-        self.updated.setText("最終更新：" + (local_date(snapshot.fetched_at) if snapshot else "—"))
+        self.connection.setText(("● ONLINE   " if not stale else "● OFFLINE   ") + "Codex接続：" + detail)
+        self.updated.setText(("最終成功：" if stale else "最終更新：") + (local_date(snapshot.fetched_at) if snapshot else "—"))
 
     def show_front(self):
+        if self.position_manager:
+            self.position_manager.ensure_visible()
         self.showNormal()
+        if self.position_manager:
+            self.position_manager.ensure_visible()
         self.raise_()
         self.activateWindow()
 
@@ -210,8 +230,9 @@ class SettingsDialog(QDialog):
     save_requested = Signal(object, object)
     test_requested = Signal(object)
     reconnect = Signal()
+    appearance_changed = Signal(str, bool, bool)
 
-    def __init__(self, config, has_webhook, parent, mock=False):
+    def __init__(self, config, has_webhook, parent, mock=False, skins=None):
         super().__init__(parent)
         self.setWindowTitle("設定")
         self.resize(570, 480)
@@ -286,6 +307,24 @@ class SettingsDialog(QDialog):
         reconnect.clicked.connect(self.reconnect.emit)
         codex.addRow(reconnect)
         codex.addRow(QLabel("バージョン・接続状態はメイン画面の「診断」で確認できます。"))
+        appearance = tab("外観")
+        self.skins = skins or parent.skins
+        self.skin_select = QComboBox()
+        for skin in self.skins.available_skins():
+            self.skin_select.addItem(skin["name"], skin["id"])
+        self.skin_select.setCurrentIndex(max(0, self.skin_select.findData(config.skin_id)))
+        appearance.addRow("スキン", self.skin_select)
+        check(appearance, "glow_enabled", "発光エフェクト")
+        check(appearance, "animation_enabled", "メーターアニメーション")
+        appearance.addRow(QLabel("選択直後に本体へプレビューします。保存で確定します。"))
+        self.skin_select.currentIndexChanged.connect(self.preview)
+        self.fields["glow_enabled"].toggled.connect(self.preview)
+        self.fields["animation_enabled"].toggled.connect(self.preview)
+        self.tray_style = QComboBox()
+        self.tray_style.addItem("二重リング（外周5時間・内周週間）", "rings")
+        self.tray_style.addItem("上下バー（上5時間・下週間）", "bars")
+        self.tray_style.setCurrentIndex(max(0, self.tray_style.findData(config.tray_style)))
+        appearance.addRow("タスクトレイ表示", self.tray_style)
         self.feedback = QLabel("")
         self.feedback.setWordWrap(True)
         layout.addWidget(self.feedback)
@@ -295,6 +334,11 @@ class SettingsDialog(QDialog):
         self.buttons.accepted.connect(self.save)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
+
+    def preview(self, *args):
+        self.appearance_changed.emit(self.skin_select.currentData(),
+                                    self.fields["glow_enabled"].isChecked(),
+                                    self.fields["animation_enabled"].isChecked())
 
     def browse(self):
         path, _ = QFileDialog.getOpenFileName(self, "Codex CLIを選択", "", "Codex (*.exe *.cmd)")
@@ -322,6 +366,8 @@ class SettingsDialog(QDialog):
         if not self.valid():
             return
         values = {key: widget.isChecked() if isinstance(widget, QCheckBox) else widget.value() for key, widget in self.fields.items()}
+        values["skin_id"] = self.skin_select.currentData()
+        values["tray_style"] = self.tray_style.currentData()
         values["reminders"] = [minute for minute, box in self.reminders.items() if box.isChecked()]
         values["codex_path"] = self.codex_path.text().strip()
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)

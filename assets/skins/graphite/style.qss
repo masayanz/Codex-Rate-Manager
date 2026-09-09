@@ -1,0 +1,19 @@
+QWidget { background: {{colors.window_bg}}; color: {{colors.text_primary}}; font-family: 'Segoe UI', 'Yu Gothic UI'; font-size: 14px; }
+QMainWindow, QDialog { background: {{colors.window_bg}}; }
+QLabel#eyebrow, QLabel#muted { color: {{colors.text_secondary}}; }
+QLabel#status { font-size: 23px; font-weight: 700; }
+QLabel#remaining { font-size: 34px; font-weight: 700; }
+QFrame#card { background: {{colors.panel_bg}}; border: 1px solid {{colors.border}}; border-radius: {{layout.card_radius}}px; }
+QFrame#card QLabel { background: transparent; }
+QPushButton { background: {{colors.panel_bg_alt}}; border: 1px solid {{colors.border}}; border-radius: 6px; padding: 9px 10px; }
+QPushButton:hover, QPushButton#primary { background: {{colors.panel_bg_alt}}; border-color: {{colors.border_active}}; }
+QLineEdit, QSpinBox, QTextEdit, QTableWidget { background: {{colors.panel_bg}}; border: 1px solid {{colors.border}}; border-radius: 4px; padding: 6px; }
+QProgressBar { background: {{colors.panel_bg_alt}}; border: none; border-radius: 5px; min-height: 10px; max-height: 10px; }
+QProgressBar::chunk { background: {{colors.accent}}; border-radius: 5px; }
+QTabWidget::pane { border: 1px solid {{colors.border}}; }
+QTabBar::tab { background: {{colors.panel_bg}}; padding: 10px 14px; }
+QTabBar::tab:selected { background: {{colors.panel_bg_alt}}; color: {{colors.accent_secondary}}; }
+QHeaderView::section { background: {{colors.panel_bg_alt}}; padding: 8px; border: none; }
+QMenu { background: {{colors.panel_bg}}; border: 1px solid {{colors.border}}; }
+QMenu::item { padding: 8px 18px; }
+QMenu::item:selected { background: {{colors.panel_bg_alt}}; }

@@ -166,6 +166,7 @@ class Monitor(threading.Thread):
                 self.signals.history.emit(value, self.db.history(value))
         elif name == "save":
             config, webhook = value
+            config.window = self.config.window
             try:
                 if not self.mock and config.autostart != self.config.autostart:
                     set_autostart(config.autostart)
@@ -182,6 +183,15 @@ class Monitor(threading.Thread):
                     self.handle("reconnect", None)
             except Exception:
                 self.signals.result.emit("設定", False, "設定の保存に失敗しました。Webhook形式と保存先のアクセス権を確認してください。")
+        elif name in ("window", "shutdown"):
+            try:
+                from .storage import valid_window
+                if valid_window(value):
+                    self.config.window = dict(value)
+                    save_config(self.data_dir, self.config)
+            finally:
+                if name == "shutdown":
+                    self.stop()
         elif name == "toggle":
             self.config.notifications_enabled = bool(value)
             save_config(self.data_dir, self.config)
@@ -218,6 +228,12 @@ class Monitor(threading.Thread):
                     self.event("CODEX_CONNECTED")
                 payload = self.client.read_rates()
             snapshot = parse_rates(payload)
+            # A response without either required window is not a usable rate
+            # snapshot.  Fail closed and enter the normal reconnect backoff;
+            # otherwise a malformed response would be treated as a successful
+            # fetch and the next retry could be delayed for several minutes.
+            if snapshot.five_hour is None or snapshot.weekly is None:
+                raise ValueError("required rate window is missing")
             self.snapshot = snapshot
             state = classify(snapshot, self.config.low_threshold)
             events = self.engine.accept(snapshot, self.config.low_threshold)

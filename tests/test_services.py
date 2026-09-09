@@ -10,7 +10,27 @@ def test_config_invalid_values_use_defaults(tmp_path):
     (tmp_path / "config.json").write_text(json.dumps({"normal_interval": -1, "reminders": [20, "bad"]}))
     config = load_config(tmp_path)
     assert config.normal_interval == Config().normal_interval
-    assert config.reminders == []
+    assert config.reminders == [10]
+
+
+def test_legacy_config_migration_preserves_settings(tmp_path):
+    (tmp_path / "config.json").write_text(json.dumps({"normal_interval": 120, "discord_enabled": True, "future_field": 7}))
+    config = load_config(tmp_path)
+    assert config.skin_id == "neon_future" and config.normal_interval == 120
+    assert config.discord_enabled
+    save_config(tmp_path, config)
+    raw = json.loads((tmp_path / "config.json").read_text())
+    assert raw["future_field"] == 7
+    assert raw["skin_id"] == "neon_future"
+
+
+def test_ico_contains_all_windows_sizes():
+    import struct
+    from codex_rate_manager.resources import resource_path
+    data = resource_path("assets/app.ico").read_bytes()
+    reserved, kind, count = struct.unpack_from("<HHH", data)
+    assert (reserved, kind, count) == (0, 1, 9)
+    assert [data[6 + i * 16] or 256 for i in range(count)] == [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
 
 def test_database_dedup_survives_reopen(tmp_path):

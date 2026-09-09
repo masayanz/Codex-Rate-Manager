@@ -65,10 +65,14 @@ class DiscordClient:
 
 def send_windows(title, message):
     try:
-        from windows_toasts import Toast, WindowsToaster
+        from windows_toasts import Toast, WindowsToaster, ToastDisplayImage
+        from .resources import resource_path
         t = WindowsToaster("Codex Rate Manager")
         toast = Toast()
         toast.text_fields = [str(title), str(message)]
+        logo = resource_path("assets/app.png")
+        if logo.is_file():
+            toast.AddImage(ToastDisplayImage.fromPath(logo, altText="Codex Rate Manager"))
         t.show_toast(toast)
         return True, "Windowsへ通知を登録しました（表示はWindows設定に依存）"
     except Exception as e:

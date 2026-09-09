@@ -1,0 +1,13 @@
+{
+  "id": "minimal_dark",
+  "name": "Minimal Dark",
+  "version": 1,
+  "colors": {
+    "window_bg": "#101010", "panel_bg": "#181818", "panel_bg_alt": "#202020",
+    "border": "#404040", "border_active": "#eeeeee", "text_primary": "#ffffff",
+    "text_secondary": "#bdbdbd", "accent": "#eeeeee", "accent_secondary": "#cccccc",
+    "success": "#66bb6a", "warning": "#ffb74d", "danger": "#ef5350", "disabled": "#707070"
+  },
+  "layout": { "window_radius": 4, "card_radius": 4, "card_spacing": 8, "outer_margin": 14 },
+  "effects": { "glow": false, "glow_strength": 0.0 }
+}

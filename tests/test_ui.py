@@ -83,10 +83,12 @@ def test_settings_tabs_save_and_history_diagnostics(running_app):
     settings = app.settings
     assert settings is not None and settings.isVisible()
     tabs = settings.findChild(QTabWidget)
-    assert tabs is not None and tabs.count() == 5
+    assert tabs is not None and tabs.count() == 6
+    settings.tray_style.setCurrentIndex(1)
     settings.fields["normal_interval"].setValue(120)
     settings.buttons.button(QDialogButtonBox.StandardButton.Save).click()
     assert wait_for(app.app, lambda: app.config.normal_interval == 120)
+    assert app.config.tray_style == "bars"
     settings.close()
     app.open_history()
     assert wait_for(app.app, lambda: app.history.tables["rates"].rowCount() > 0)
@@ -124,3 +126,76 @@ def test_close_hides_to_tray_and_show_front(running_app):
     assert not app.window.isVisible()
     app.window.show_front()
     assert app.window.isVisible()
+
+
+@pytest.mark.parametrize("mode", ["rings", "bars"])
+def test_tray_meter_distinguishes_windows_and_disconnect(qapp, mode):
+    from codex_rate_manager.meters import tray_icon
+    images = [tray_icon(a, b, "AVAILABLE", mode).pixmap(16, 16).toImage()
+              for a, b in [(100, 100), (50, 50), (20, 80), (0, 80), (80, 0)]]
+    assert all(not image.isNull() for image in images)
+    assert all(images[i] != images[j] for i in range(len(images)) for j in range(i))
+    disconnected = tray_icon(80, 0, "DISCONNECTED", mode).pixmap(16, 16).toImage()
+    assert disconnected != images[-1]
+    assert disconnected == tray_icon(100, 100, "DISCONNECTED", mode).pixmap(16, 16).toImage()
+
+
+def test_tray_current_values_and_stale_labels(running_app):
+    app = running_app
+    assert "5時間:" in app.tray.toolTip() and "週間リセット:" in app.tray.toolTip()
+    assert "%" in app.tray_five.text()
+    app.update(app.latest_snapshot, "DISCONNECTED", "再接続中")
+    assert "最終取得値" in app.tray_five.text()
+    assert app.window.updated.text().startswith("最終成功：")
+    assert app.window.five.gauge.value is None
+
+
+def test_skin_preview_save_and_cancel(running_app):
+    app = running_app
+    original = app.tray.icon().pixmap(32, 32).toImage()
+    app.open_settings()
+    app.settings.skin_select.setCurrentIndex(app.settings.skin_select.findData("graphite"))
+    assert app.skins.current_skin_id == "graphite"
+    assert app.tray.icon().pixmap(32, 32).toImage() != original
+    app.settings.reject()
+    assert app.skins.current_skin_id == "neon_future"
+    app.open_settings()
+    app.settings.skin_select.setCurrentIndex(app.settings.skin_select.findData("minimal_dark"))
+    app.settings.fields["animation_enabled"].setChecked(False)
+    app.settings.save()
+    assert wait_for(app.app, lambda: app.config.skin_id == "minimal_dark")
+    app.settings.reject()
+    assert app.skins.current_skin_id == "minimal_dark"
+    from codex_rate_manager.storage import load_config
+    saved = load_config(app.data_dir)
+    assert saved.skin_id == "minimal_dark" and not saved.animation_enabled
+
+
+def test_toolbar_stays_outside_scroll_area_and_position_is_saved(running_app):
+    app = running_app
+    app.window.resize(480, 450)
+    app.app.processEvents()
+    assert not app.window.scroll.isAncestorOf(app.window.toolbar)
+    assert app.window.toolbar.geometry().bottom() <= app.window.centralWidget().height()
+    value = app.positions.capture()
+    app.monitor.command("window", value)
+    from codex_rate_manager.storage import load_config
+    assert wait_for(app.app, lambda: load_config(app.data_dir).window == value)
+
+
+def test_animation_ends_and_can_be_disabled(qapp):
+    from codex_rate_manager.skin_manager import SkinManager
+    from codex_rate_manager.meters import RingMeter
+    from PySide6.QtCore import QAbstractAnimation
+    skins = SkinManager()
+    gauge = RingMeter(skins)
+    gauge.show()
+    gauge.set_value(42)
+    gauge.set_value(97)
+    assert gauge.animation.state() == QAbstractAnimation.State.Running
+    assert wait_for(qapp, lambda: gauge.animation.state() == QAbstractAnimation.State.Stopped)
+    assert gauge.display_value == 97
+    skins.apply("neon_future", animation_enabled=False)
+    gauge.set_value(20)
+    assert gauge.display_value == 20
+    gauge.close()

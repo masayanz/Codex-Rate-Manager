@@ -1,0 +1,13 @@
+{
+  "id": "neon_future",
+  "name": "Neon Future",
+  "version": 1,
+  "colors": {
+    "window_bg": "#07111f", "panel_bg": "#0d1c2d", "panel_bg_alt": "#10243a",
+    "border": "#1b4962", "border_active": "#19d9e6", "text_primary": "#e8f6ff",
+    "text_secondary": "#87b6d4", "accent": "#22e6d2", "accent_secondary": "#23bde5",
+    "success": "#2fd4ad", "warning": "#f4c95d", "danger": "#ff5b68", "disabled": "#425569"
+  },
+  "layout": { "window_radius": 16, "card_radius": 14, "card_spacing": 12, "outer_margin": 18 },
+  "effects": { "glow": true, "glow_strength": 0.45 }
+}

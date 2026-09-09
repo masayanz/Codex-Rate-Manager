@@ -10,12 +10,18 @@ import sys
 import time
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QTimer, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from .monitor import Monitor
 from .storage import Config
-from .ui import MainWindow, SettingsDialog, HistoryDialog, DiagnosticsDialog, STYLE, icon_for
+from .meters import tray_icon
+from .skin_manager import SkinManager
+from .resources import resource_path
+from .window_position import WindowPositionManager
+from .ui import LABELS, local_date
+from .ui import MainWindow, SettingsDialog, HistoryDialog, DiagnosticsDialog
 
 
 class ResumeFilter(QAbstractNativeEventFilter):
@@ -41,15 +47,28 @@ class Application:
         self.config_loaded = False
         self.diagnostics_data = {}
         self.latest_state = "CONNECTING"
+        self.latest_snapshot = None
         self.settings = self.history = self.diagnostics = None
         self.quitting = False
         self.first_config = True
-        self.window = MainWindow(args.mock)
+        self.skins = SkinManager(data_dir)
+        self.app_icon = QIcon(str(resource_path("assets/app.ico")))
+        self.app.setWindowIcon(self.app_icon)
+        self.window = MainWindow(args.mock, self.skins)
+        self.positions = WindowPositionManager(self.window)
+        self.window.position_manager = self.positions
         self.window.show()
-        self.tray = QSystemTrayIcon(icon_for("CONNECTING"), app)
+        self.tray = QSystemTrayIcon(self.app_icon, app)
         self.tray.setToolTip("Codex Rate Manager\nCodexへ接続しています...")
         menu = QMenu()
         menu.addAction("Codex Rate Managerを開く", self.window.show_front)
+        self.tray_five = menu.addAction("5時間レート：未取得")
+        self.tray_weekly = menu.addAction("週間レート：未取得")
+        self.tray_five.setEnabled(False)
+        self.tray_weekly.setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("履歴", self.open_history)
+        menu.addAction("診断", self.open_diagnostics)
         menu.addAction("今すぐ更新", lambda: self.monitor.command("refresh"))
         menu.addAction("Codexを起動", lambda: self.monitor.command("launch"))
         menu.addAction("Discord通知テスト", lambda: self.monitor.command("test"))
@@ -64,6 +83,8 @@ class Application:
         self.tray.activated.connect(lambda reason: self.window.show_front() if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick) else None)
         self.tray.show()
         self.monitor = Monitor(data_dir, args.mock)
+        self.positions.changed.connect(self.save_position)
+        self.skins.skin_changed.connect(self.update_tray)
         self.monitor.signals.update.connect(self.update)
         self.monitor.signals.config.connect(self.on_config)
         self.monitor.signals.diagnostics.connect(self.on_diagnostics)
@@ -104,19 +125,49 @@ class Application:
 
     def update(self, snapshot, state, detail):
         self.latest_state = state
+        self.latest_snapshot = snapshot
         self.window.update_status(snapshot, state, detail)
-        self.tray.setIcon(icon_for(state))
-        if snapshot:
-            five, week = snapshot.five_hour, snapshot.weekly
-            from .ui import local_date
-            self.tray.setToolTip(f"Codex Rate Manager\n5h 残り {f'{five.remaining:g}%' if five else '未取得'}\nReset {local_date(five.reset_at) if five else '—'}\nWeekly 残り {f'{week.remaining:g}%' if week else '未取得'}\n{state}")
+        self.update_tray()
+
+    def update_tray(self, *args):
+        snapshot, state = self.latest_snapshot, self.latest_state
+        five = snapshot.five_hour if snapshot else None
+        week = snapshot.weekly if snapshot else None
+        try:
+            icon = tray_icon(five.remaining if five else None, week.remaining if week else None, state, self.config.tray_style, self.skins.tokens)
+            self.tray.setIcon(icon if not icon.isNull() else self.app_icon)
+        except Exception:
+            self.tray.setIcon(self.app_icon)
+        five_text = f"{five.remaining:g}%" if five else "未取得"
+        week_text = f"{week.remaining:g}%" if week else "未取得"
+        stale = state in {"CONNECTING", "DISCONNECTED", "VERIFYING", "ERROR", "WAITING_RESET"}
+        suffix = "（最終取得値）" if stale and snapshot else ""
+        self.tray_five.setText(f"5時間レート：{five_text}{suffix}")
+        self.tray_weekly.setText(f"週間レート：{week_text}{suffix}")
+        self.tray.setToolTip(
+            f"Codex Rate Manager\n5時間: {five_text} / 週間: {week_text}{suffix}\n"
+            f"5時間リセット: {local_date(five.reset_at) if five else '—'}\n"
+            f"週間リセット: {local_date(week.reset_at) if week else '—'}\n状態: {LABELS.get(state, state)}"
+        )
+
+    def save_position(self, value):
+        if self.config_loaded and not self.quitting:
+            self.monitor.command("window", value)
+
+    def apply_appearance(self, *args):
+        self.skins.apply(self.config.skin_id, self.config.glow_enabled, self.config.animation_enabled)
+        self.positions.ensure_visible()
 
     def on_config(self, config, has_webhook):
         self.config, self.has_webhook = config, has_webhook
         self.config_loaded = True
+        self.apply_appearance()
+        if self.first_config:
+            self.positions.restore(config.window)
         self.window.tray_enabled = config.tray_enabled
         self.tray.setVisible(config.tray_enabled)
         self.toggle.setChecked(config.notifications_enabled)
+        self.update_tray()
         if self.first_config and not config.show_on_start and config.tray_enabled and QSystemTrayIcon.isSystemTrayAvailable():
             self.window.hide()
         self.first_config = False
@@ -151,7 +202,9 @@ class Application:
         if self.settings and self.settings.isVisible():
             self.settings.raise_()
             return
-        self.settings = SettingsDialog(self.config, self.has_webhook, self.window, self.args.mock)
+        self.settings = SettingsDialog(self.config, self.has_webhook, self.window, self.args.mock, self.skins)
+        self.settings.appearance_changed.connect(self.skins.apply)
+        self.settings.finished.connect(self.apply_appearance)
         self.settings.save_requested.connect(lambda config, url: self.monitor.command("save", (config, url)))
         self.settings.test_requested.connect(lambda url: self.monitor.command("test", url))
         self.settings.reconnect.connect(lambda: self.monitor.command("reconnect"))
@@ -187,7 +240,8 @@ class Application:
         self.quitting = True
         self.window.connection.setText("監視を停止しています...")
         self.window.setEnabled(False)
-        self.monitor.stop()
+        self.positions.ensure_visible()
+        self.monitor.command("shutdown", self.positions.capture())
         if not self.monitor.is_alive():
             self.finished()
 
@@ -208,12 +262,14 @@ def main(argv=None):
     parser.add_argument("--smoke-test", type=int, metavar="SECONDS", help="実アプリを一定時間起動し、診断と画面を保存して終了")
     args = parser.parse_args(argv)
     data_dir = args.data_dir or Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "CodexRateManager" / ("mock" if args.mock else "")
+    if os.name == "nt":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("CodexRateManager.Desktop")
     app = QApplication(sys.argv[:1])
+    app.setWindowIcon(QIcon(str(resource_path("assets/app.ico"))))
     app.setApplicationName("Codex Rate Manager")
     app.setOrganizationName("CodexRateManager")
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
     # QLocalServerはWindowsのユーザー限定Named Pipe。保存先ごとに一つ。
     identity = hashlib.sha256(str(data_dir.resolve()).casefold().encode()).hexdigest()[:24]
     server_name = "CodexRateManager-" + identity

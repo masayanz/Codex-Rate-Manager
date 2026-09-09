@@ -18,12 +18,17 @@ class Config:
     discord_low: bool = True
     discord_limit: bool = True
     discord_reset: bool = True
-    reminders: list[int] = field(default_factory=list)
+    reminders: list[int] = field(default_factory=lambda: [10])
     notifications_enabled: bool = True
     autostart: bool = False
     show_on_start: bool = True
     tray_enabled: bool = True
     codex_path: str = ""
+    tray_style: str = "rings"
+    skin_id: str = "neon_future"
+    glow_enabled: bool = True
+    animation_enabled: bool = True
+    window: dict = field(default_factory=dict)
 
 def load_config(data_dir: Path) -> Config:
     path = Path(data_dir) / "config.json"
@@ -41,14 +46,30 @@ def load_config(data_dir: Path) -> Config:
         if key == "normal_interval": valid = type(value) is int and 30 <= value <= 3600
         elif key == "near_interval": valid = type(value) is int and 30 <= value <= 300
         elif key == "low_threshold": valid = type(value) is int and 1 <= value <= 99
+        elif key == "tray_style": valid = value in ("rings", "bars")
+        elif key == "skin_id": valid = isinstance(value, str) and bool(re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", value))
+        elif key == "window": valid = valid_window(value)
         elif key == "reminders": valid = isinstance(value, list) and all(type(v) is int and v in {1, 5, 10, 30} for v in value)
         if valid: defaults[key] = value
     return Config(**defaults)
 
+
+def valid_window(value):
+    return isinstance(value, dict) and (not value or (
+        all(type(value.get(k)) is int and abs(value[k]) < 100000 for k in ("x", "y", "width", "height"))
+        and value["width"] > 0 and value["height"] > 0
+        and isinstance(value.get("screen", ""), str)))
+
 def save_config(data_dir: Path, config: Config) -> None:
     d = Path(data_dir); d.mkdir(parents=True, exist_ok=True)
     p = d / "config.json"; tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(asdict(config), ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        existing = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        existing = {}
+    values = existing if isinstance(existing, dict) else {}
+    values.update(asdict(config))
+    tmp.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, p)
 
 def _protect(data: bytes) -> bytes:
