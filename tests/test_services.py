@@ -33,6 +33,20 @@ def test_ico_contains_all_windows_sizes():
     assert [data[6 + i * 16] or 256 for i in range(count)] == [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
 
+def test_inaccessible_startup_config_is_corrected(tmp_path):
+    for autostart in (False, True):
+        config = Config(autostart=autostart, show_on_start=False, tray_enabled=False)
+        save_config(tmp_path, config)
+        saved = load_config(tmp_path)
+        assert saved.show_on_start or saved.tray_enabled
+        if autostart:
+            assert saved.tray_enabled and not saved.show_on_start
+        else:
+            assert saved.show_on_start and not saved.tray_enabled
+    (tmp_path / "config.json").write_text(json.dumps({"autostart": True, "show_on_start": False, "tray_enabled": False}))
+    assert load_config(tmp_path).tray_enabled
+
+
 def test_database_dedup_survives_reopen(tmp_path):
     db = Database(tmp_path)
     assert db.claim_notification("reset", "windows")

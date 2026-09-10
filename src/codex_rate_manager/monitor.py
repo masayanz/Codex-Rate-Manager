@@ -10,12 +10,13 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone, timedelta
+from dataclasses import replace
 
 from PySide6.QtCore import QObject, Signal
 
 from .codex import AppServer
 from .state import Engine, Event, Snapshot, RateWindow, State, classify, parse_rates, next_delay
-from .storage import Config, Database, load_config, save_config, load_webhook, save_webhook, redact
+from .storage import Config, Database, load_config, save_config, load_webhook, save_webhook, redact, accessible_config
 from .notifications import DiscordClient, send_windows
 from .startup import set_autostart
 
@@ -166,6 +167,7 @@ class Monitor(threading.Thread):
                 self.signals.history.emit(value, self.db.history(value))
         elif name == "save":
             config, webhook = value
+            config = accessible_config(config)
             config.window = self.config.window
             try:
                 if not self.mock and config.autostart != self.config.autostart:
@@ -174,6 +176,8 @@ class Monitor(threading.Thread):
                     save_webhook(self.data_dir, webhook)
                 save_config(self.data_dir, config)
                 reconnect = config.codex_path != self.config.codex_path
+                if config.tray_enabled != self.config.tray_enabled:
+                    self.event("TRAY_ICON_SHOWN" if config.tray_enabled else "TRAY_ICON_HIDDEN")
                 self.config = config
                 if webhook is not None:
                     self.webhook = webhook
@@ -183,6 +187,20 @@ class Monitor(threading.Thread):
                     self.handle("reconnect", None)
             except Exception:
                 self.signals.result.emit("設定", False, "設定の保存に失敗しました。Webhook形式と保存先のアクセス権を確認してください。")
+        elif name == "tray_visibility":
+            try:
+                config = accessible_config(replace(self.config, tray_enabled=bool(value)))
+                save_config(self.data_dir, config)
+                if config.tray_enabled != self.config.tray_enabled:
+                    self.event("TRAY_ICON_SHOWN" if config.tray_enabled else "TRAY_ICON_HIDDEN")
+                self.config = config
+                self.signals.config.emit(config, bool(self.webhook))
+                message = "トレイ表示設定を保存しました。"
+                if config.tray_enabled != bool(value):
+                    message = "自動起動時の操作手段を確保するため、トレイ表示をONにしました。非表示にする場合は起動時のウィンドウ表示を有効にしてください。"
+                self.signals.result.emit("トレイ表示", True, message)
+            except Exception:
+                self.signals.result.emit("トレイ表示", False, "トレイ表示設定を保存できません。保存先のアクセス権を確認してください。ウィンドウは開いたままにします。")
         elif name in ("window", "shutdown"):
             try:
                 from .storage import valid_window

@@ -4,8 +4,8 @@ from dataclasses import replace
 from datetime import datetime
 import time
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtCore import Qt, QTimer, Signal, QUrl
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QScrollArea, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar,
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QHeaderView, QSizePolicy,
 )
 
-from .storage import Config
+from .storage import Config, accessible_config
 from .meters import RingMeter, SegmentBar, tray_icon
 from .resources import resource_path
 from .skin_manager import SkinManager, default_stylesheet
@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
     history_requested = Signal()
     diagnostics_requested = Signal()
     quit_requested = Signal()
+    close_without_tray = Signal()
 
     def __init__(self, mock=False, skins=None):
         super().__init__()
@@ -223,7 +224,7 @@ class MainWindow(QMainWindow):
             self.hide()
         else:
             event.ignore()
-            self.quit_requested.emit()
+            self.close_without_tray.emit()
 
 
 class SettingsDialog(QDialog):
@@ -231,6 +232,7 @@ class SettingsDialog(QDialog):
     test_requested = Signal(object)
     reconnect = Signal()
     appearance_changed = Signal(str, bool, bool)
+    tray_visibility_changed = Signal(bool)
 
     def __init__(self, config, has_webhook, parent, mock=False, skins=None):
         super().__init__(parent)
@@ -261,7 +263,14 @@ class SettingsDialog(QDialog):
         auto = check(general, "autostart", "Windowsログイン時に起動")
         auto.setEnabled(not mock)
         check(general, "show_on_start", "起動時にウィンドウを表示")
-        check(general, "tray_enabled", "タスクトレイ常駐（×で格納）")
+        general.addRow(QLabel("タスクトレイ"))
+        check(general, "tray_enabled", "タスクトレイアイコンを表示する").toggled.connect(self.tray_visibility_changed.emit)
+        hint = QLabel("表示切替は即時反映・保存されます。\nWindows側の表示位置はWindowsの設定で変更できます。")
+        hint.setWordWrap(True)
+        general.addRow(hint)
+        self.taskbar_settings = QPushButton("Windowsの通知領域設定を開く")
+        self.taskbar_settings.clicked.connect(self.open_taskbar_settings)
+        general.addRow(self.taskbar_settings)
         monitor = tab("監視")
         for key, label, low, high, suffix in (("normal_interval", "通常監視間隔", 30, 3600, " 秒"), ("near_interval", "リセット10分前の監視間隔", 30, 300, " 秒"), ("low_threshold", "低残量警告", 1, 99, " %")):
             spin = QSpinBox()
@@ -335,6 +344,21 @@ class SettingsDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
 
+    def open_taskbar_settings(self):
+        # Microsoft documents this URI for the Windows taskbar settings page.
+        if not QDesktopServices.openUrl(QUrl("ms-settings:taskbar")):
+            self.feedback.setText("Windows設定を開けませんでした。タスクバーを右クリックし「タスクバーの設定」を開いてください。")
+        else:
+            self.feedback.setText("Windowsのタスクバー設定で通知領域の表示位置を変更できます。")
+
+    def sync_tray(self, visible, pending=False):
+        box = self.fields["tray_enabled"]
+        previous = box.blockSignals(True)
+        box.setChecked(visible)
+        box.blockSignals(previous)
+        box.setEnabled(not pending)
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(not pending)
+
     def preview(self, *args):
         self.appearance_changed.emit(self.skin_select.currentData(),
                                     self.fields["glow_enabled"].isChecked(),
@@ -372,12 +396,16 @@ class SettingsDialog(QDialog):
         values["codex_path"] = self.codex_path.text().strip()
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)
         self.feedback.setText("設定を保存しています...")
-        self.save_requested.emit(replace(self.config, **values), self.value_webhook())
+        config = accessible_config(replace(self.config, **values))
+        self.sync_tray(config.tray_enabled, True)
+        self.fields["show_on_start"].setChecked(config.show_on_start)
+        self.save_requested.emit(config, self.value_webhook())
 
     def result(self, kind, success, message):
         self.feedback.setText(message)
         self.test_button.setEnabled(True)
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(True)
+        self.fields["tray_enabled"].setEnabled(True)
 
 
 class HistoryDialog(QDialog):

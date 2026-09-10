@@ -199,3 +199,84 @@ def test_animation_ends_and_can_be_disabled(qapp):
     gauge.set_value(20)
     assert gauge.display_value == 20
     gauge.close()
+
+
+def click_close_choice(app, text):
+    app.window.close()
+    assert app.close_dialog.isVisible()
+    button = next(b for b in app.close_dialog.buttons() if b.text() == text)
+    button.click()
+
+
+def test_tray_visibility_immediate_persistent_and_monitor_continues(running_app):
+    app = running_app
+    app.open_settings()
+    app.settings.fields["tray_enabled"].setChecked(False)
+    assert not app.tray.isVisible() and app.window.isVisible()
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    from codex_rate_manager.storage import load_config
+    assert not load_config(app.data_dir).tray_enabled
+    app.monitor.command("mock", "LOW")
+    assert wait_for(app.app, lambda: app.latest_state == "LOW")
+    app.settings.fields["tray_enabled"].setChecked(True)
+    assert app.tray.isVisible()
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    assert load_config(app.data_dir).tray_enabled
+    assert "5時間:" in app.tray.toolTip() and "週間:" in app.tray.toolTip()
+
+
+def test_close_hidden_tray_cancel_and_enable_then_hide(running_app, monkeypatch):
+    from PySide6.QtWidgets import QSystemTrayIcon
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+    app = running_app
+    app.request_tray_visibility(False)
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    click_close_choice(app, "キャンセル")
+    assert app.window.isVisible() and app.monitor.is_alive()
+    click_close_choice(app, "タスクトレイを表示して閉じる")
+    assert app.window.isVisible()  # cannot hide before worker confirms persistence
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    assert app.tray.isVisible() and not app.window.isVisible()
+    from codex_rate_manager.storage import load_config
+    assert load_config(app.data_dir).tray_enabled
+    app.request_tray_visibility(False)
+    assert app.window.isVisible() and not app.tray.isVisible()
+    assert wait_for(app.app, lambda: not app.tray_pending)
+
+
+def test_close_hidden_tray_exit(running_app):
+    app = running_app
+    app.request_tray_visibility(False)
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    click_close_choice(app, "アプリを終了")
+    assert wait_for(app.app, lambda: not app.monitor.is_alive())
+    assert app.quitting
+
+
+def test_tray_save_failure_keeps_window_accessible(running_app, monkeypatch):
+    from PySide6.QtWidgets import QSystemTrayIcon
+    import codex_rate_manager.monitor as module
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+    app = running_app
+    app.args.smoke_test = 1  # suppress unrelated error popup in this test
+    app.request_tray_visibility(False)
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    def fail(*args):
+        raise OSError("read only")
+    monkeypatch.setattr(module, "save_config", fail)
+    click_close_choice(app, "タスクトレイを表示して閉じる")
+    assert wait_for(app.app, lambda: not app.tray_pending)
+    assert app.window.isVisible() and not app.tray.isVisible()
+    assert not app.config.tray_enabled
+
+
+def test_windows_taskbar_settings_uri(running_app, monkeypatch):
+    from PySide6.QtGui import QDesktopServices
+    urls = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: urls.append(url.toString()) or True)
+    running_app.open_settings()
+    running_app.settings.taskbar_settings.click()
+    assert urls == ["ms-settings:taskbar"]
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: False)
+    running_app.settings.taskbar_settings.click()
+    assert "右クリック" in running_app.settings.feedback.text()

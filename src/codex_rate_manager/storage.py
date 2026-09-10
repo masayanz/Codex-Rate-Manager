@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json, os, re, sqlite3, ctypes, time
 from datetime import datetime
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +51,14 @@ def load_config(data_dir: Path) -> Config:
         elif key == "window": valid = valid_window(value)
         elif key == "reminders": valid = isinstance(value, list) and all(type(v) is int and v in {1, 5, 10, 30} for v in value)
         if valid: defaults[key] = value
-    return Config(**defaults)
+    return accessible_config(Config(**defaults))
+
+
+def accessible_config(config: Config) -> Config:
+    """Keep at least one way to reach the application after startup."""
+    if not config.show_on_start and not config.tray_enabled:
+        return replace(config, tray_enabled=True) if config.autostart else replace(config, show_on_start=True)
+    return config
 
 
 def valid_window(value):
@@ -61,6 +68,7 @@ def valid_window(value):
         and isinstance(value.get("screen", ""), str)))
 
 def save_config(data_dir: Path, config: Config) -> None:
+    config = accessible_config(config)
     d = Path(data_dir); d.mkdir(parents=True, exist_ok=True)
     p = d / "config.json"; tmp = p.with_suffix(".json.tmp")
     try:
