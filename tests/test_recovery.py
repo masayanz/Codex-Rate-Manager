@@ -23,7 +23,7 @@ def test_states(a, b, expected):
 def test_five_reset_cannot_clear_weekly_limit():
     engine = Engine()
     engine.accept(snapshot(100, 100))
-    assert not any(e.kind == "reset" for e in engine.accept(snapshot(0, 100)))
+    assert any(e.event_type == "RATE_5H_RECOVERED" and e.kind == "reset" for e in engine.accept(snapshot(0, 100)))
     events = engine.accept(snapshot(0, 85))
     resets = [e for e in events if e.kind == "reset"]
     assert len(resets) == 1
@@ -75,11 +75,11 @@ def test_bad_used_values_fail_closed(bad):
     assert result.five_hour is None
 
 
-def test_backend_other_limits_block_recovery():
+def test_backend_other_limits_do_not_block_window_recovery():
     engine = Engine()
     engine.accept(snapshot(100))
     assert classify(replace(snapshot(), blocked_other=True)) == State.LIMITED_OTHER
-    assert not any(e.kind == "reset" for e in engine.accept(replace(snapshot(), blocked_other=True)))
+    assert any(e.kind == "reset" for e in engine.accept(replace(snapshot(), blocked_other=True)))
 
 
 @pytest.mark.parametrize("field,value", [("spendControlReached", True), ("rateLimitReachedType", "workspace_owner_usage_limit_reached"), ("individualLimit", {"remainingPercent": 0})])

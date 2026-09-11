@@ -41,7 +41,7 @@ class DiscordClient:
                 retry_delay = 0.0
             try:
                 r=requests.post(url,json=payload,timeout=15,allow_redirects=False)
-                if 200 <= r.status_code < 300: return True,"sent"
+                if 200 <= r.status_code < 300: return True,f"Discord HTTP {r.status_code}"
                 if r.status_code == 429 and attempt < 2:
                     try:
                         retry = float(r.headers.get("Retry-After") or r.json().get("retry_after"))
@@ -62,6 +62,30 @@ class DiscordClient:
                 if attempt == 2: return False,f"Discord request failed: {type(e).__name__}"
                 retry_delay = (5, 15)[attempt]
         return False,"Discord request failed"
+
+
+class NotificationManager:
+    """手動テストも自動イベントも同じ配信・記録経路へ渡す。"""
+
+    def __init__(self, enqueue, log):
+        self.enqueue = enqueue
+        self.log = log
+
+    def send(self, event, config, url):
+        if event.kind == "internal":
+            self.log("NOTIFICATION_SKIPPED", f"event_type={event.event_type} notification_event_key={event.key} reason=still_limited_or_coalesced")
+            return
+        for channel in ("WINDOWS", "DISCORD"):
+            if event.kind == "test":
+                enabled = channel == "DISCORD"
+                reason = "manual_test"
+            else:
+                enabled = config.notifications_enabled and (channel == "WINDOWS" or config.discord_enabled)
+                enabled = enabled and (event.kind == "reminder" or getattr(config, f"{channel.lower()}_{event.kind}", False))
+                reason = "enabled" if enabled else "settings_disabled"
+            self.log("NOTIFICATION_ROUTING", f"event_type={event.event_type or event.kind} notification_event_key={event.key} channel={channel} notifications_enabled={config.notifications_enabled} discord_enabled={config.discord_enabled} discord_reset_enabled={config.discord_reset} enabled={enabled} reason={reason}")
+            if enabled:
+                self.enqueue(channel, event, url)
 
 def send_windows(title, message):
     try:

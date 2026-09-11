@@ -228,6 +228,7 @@ class MainWindow(QMainWindow):
 
 
 class SettingsDialog(QDialog):
+    discord_enabled_changed = Signal(bool)
     save_requested = Signal(object, object)
     test_requested = Signal(object)
     reconnect = Signal()
@@ -282,7 +283,7 @@ class SettingsDialog(QDialog):
         monitor.addRow(QLabel("1分前は30秒間隔、予定時刻に再取得します。"))
         notifications = tab("通知")
         check(notifications, "notifications_enabled", "通知を有効にする")
-        for kind, title in (("low", "残量低下"), ("limit", "上限到達"), ("reset", "利用可能への復帰")):
+        for kind, title in (("low", "残量低下"), ("limit", "上限到達"), ("reset", "各レート枠の復帰")):
             check(notifications, "windows_" + kind, "Windows：" + title)
         self.reminders = {}
         row = QHBoxLayout()
@@ -293,15 +294,21 @@ class SettingsDialog(QDialog):
             row.addWidget(box)
         notifications.addRow("事前通知（両チャネル）", row)
         discord = tab("Discord")
-        check(discord, "discord_enabled", "Discord通知を有効にする")
+        check(discord, "discord_enabled", "Discord通知を有効にする（即時保存）").toggled.connect(self.discord_enabled_changed.emit)
         self.webhook = QLineEdit()
         self.webhook.setEchoMode(QLineEdit.EchoMode.Password)
         self.webhook.setPlaceholderText("登録済み（変更する場合のみ入力）" if has_webhook else "https://discord.com/api/webhooks/…")
         discord.addRow("Webhook URL", self.webhook)
         self.clear_webhook = QCheckBox("登録済みWebhookを削除")
         discord.addRow(self.clear_webhook)
-        for kind, title in (("low", "残量低下"), ("limit", "上限到達"), ("reset", "利用可能への復帰")):
+        for kind, title in (("low", "残量低下"), ("limit", "上限到達"), ("reset", "各レート枠の復帰")):
             check(discord, "discord_" + kind, title)
+        self.discord_status = QLabel()
+        self.discord_status.setWordWrap(True)
+        discord.addRow(self.discord_status)
+        for key in ("notifications_enabled", "discord_enabled", "discord_reset"):
+            self.fields[key].toggled.connect(self.update_discord_status)
+        self.update_discord_status()
         self.test_button = QPushButton("Discord通知テスト")
         self.test_button.clicked.connect(self.test)
         discord.addRow(self.test_button)
@@ -350,6 +357,14 @@ class SettingsDialog(QDialog):
             self.feedback.setText("Windows設定を開けませんでした。タスクバーを右クリックし「タスクバーの設定」を開いてください。")
         else:
             self.feedback.setText("Windowsのタスクバー設定で通知領域の表示位置を変更できます。")
+
+    def update_discord_status(self):
+        enabled = all(self.fields[key].isChecked() for key in ("notifications_enabled", "discord_enabled", "discord_reset"))
+        self.discord_status.setText(
+            "復帰通知：ON（変更後は保存してください）。テストは接続のみを確認します。"
+            if enabled else
+            "復帰通知：OFF。通知全体・Discord通知・各レート枠の復帰をONにして保存してください。テスト成功だけでは実通知は有効になりません。"
+        )
 
     def sync_tray(self, visible, pending=False):
         box = self.fields["tray_enabled"]
@@ -443,7 +458,7 @@ class HistoryDialog(QDialog):
             headers = ["日時", "5時間残量", "週間残量", "状態"]
             rows = [(r[0], r[2], r[5], LABELS.get(r[7], r[7])) for r in rows]
         elif kind == "notifications":
-            kinds = {"low": "残量低下", "limit": "上限到達", "reset": "利用可能への復帰", "reminder": "事前通知", "test": "テスト"}
+            kinds = {"low": "残量低下", "limit": "上限到達", "reset": "各レート枠の復帰", "reminder": "事前通知", "test": "テスト"}
             rows = [(r[0], kinds.get(r[1], r[1]), r[2], r[3], r[4]) for r in rows]
         table = self.tables[kind]
         table.setColumnCount(len(headers))

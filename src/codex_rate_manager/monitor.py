@@ -17,7 +17,7 @@ from PySide6.QtCore import QObject, Signal
 from .codex import AppServer
 from .state import Engine, Event, Snapshot, RateWindow, State, classify, parse_rates, next_delay
 from .storage import Config, Database, load_config, save_config, load_webhook, save_webhook, redact, accessible_config
-from .notifications import DiscordClient, send_windows
+from .notifications import DiscordClient, NotificationManager, send_windows
 from .startup import set_autostart
 
 
@@ -69,6 +69,8 @@ class Monitor(threading.Thread):
                 self.diag["DB状態"] = "履歴の保存に失敗しました"
 
     def publish(self, state, detail=""):
+        if self.state != state:
+            self.event("STATE_TRANSITION", f"previous_state={self.state.value} current_state={state.value}")
         self.state = state
         self.signals.update.emit(self.snapshot, state.value, detail)
         self.diag["接続状態"] = detail or state.value
@@ -187,6 +189,15 @@ class Monitor(threading.Thread):
                     self.handle("reconnect", None)
             except Exception:
                 self.signals.result.emit("設定", False, "設定の保存に失敗しました。Webhook形式と保存先のアクセス権を確認してください。")
+        elif name == "discord_enabled":
+            try:
+                config = replace(self.config, discord_enabled=bool(value))
+                save_config(self.data_dir, config)
+                self.config = config
+                self.signals.config.emit(config, bool(self.webhook))
+                self.signals.result.emit("Discord設定", True, "Discord通知のON/OFFを保存しました。")
+            except Exception:
+                self.signals.result.emit("Discord設定", False, "Discord通知設定を保存できません。保存先のアクセス権を確認してください。")
         elif name == "tray_visibility":
             try:
                 config = accessible_config(replace(self.config, tray_enabled=bool(value)))
@@ -217,21 +228,24 @@ class Monitor(threading.Thread):
         elif name == "test":
             url = self.webhook if value is None else value
             event = Event("test", f"test:{time.time_ns()}", "Codex Rate Manager", "Discord通知テストです。\n正常に通知できています。")
-            self.enqueue("DISCORD", event, url)
+            self.notify(event, url)
         elif name == "notification_result":
             channel, event, success, message = value
             self.diag[f"{channel}通知"] = message
             if channel == "DISCORD":
                 self.diag["Discord状態"] = message
             if self.db:
-                self.db.notification(event.kind, channel, "成功" if success else "失敗", event.message + "\n" + message)
-            self.event(f"{channel}_NOTIFY_{'SUCCESS' if success else 'ERROR'}")
+                self.db.notification(event.event_type or event.kind, channel, "SUCCESS" if success else "FAILED", event.message + "\n" + message + "\nnotification_event_key=" + event.key)
+                if not success:
+                    self.db.release_notification(event.key, channel)
+            self.event(f"{channel}_NOTIFY_{'SUCCESS' if success else 'ERROR'}", f"notification_event_key={event.key} {channel.lower()}_send_result={message}")
             self.signals.diagnostics.emit(dict(self.diag))
             if event.kind == "test":
-                self.signals.result.emit("Discord通知テスト", success, "Discord通知テストに成功しました。" if success else "Discord通知に失敗しました。Webhook URLと通信環境を確認してください。")
+                self.signals.result.emit("Discord通知テスト", success, ("Discord通知テストに成功しました。実通知には通知全体・Discord通知・対象イベントをONにして保存してください。" if not (self.config.notifications_enabled and self.config.discord_enabled and self.config.discord_reset) else "Discord通知テストに成功しました。") if success else "Discord通知に失敗しました。Webhook URLと通信環境を確認してください。")
 
     def fetch(self):
         try:
+            self.reminders()
             if self.snapshot and any(w.reset_at and w.reset_at <= time.time() for w in (self.snapshot.five_hour, self.snapshot.weekly) if w):
                 self.publish(State.VERIFYING, "リセット後の残量をCodexへ確認しています...")
             if self.mock:
@@ -252,9 +266,12 @@ class Monitor(threading.Thread):
             # fetch and the next retry could be delayed for several minutes.
             if snapshot.five_hour is None or snapshot.weekly is None:
                 raise ValueError("required rate window is missing")
+            previous_snapshot = self.snapshot
+            active = self.engine.export_state().get("limited_windows", {})
             self.snapshot = snapshot
             state = classify(snapshot, self.config.low_threshold)
             events = self.engine.accept(snapshot, self.config.low_threshold)
+            self.event("RATE_TRANSITION", f"previous_state={self.state.value} current_state={state.value} five_hour_remaining_previous={getattr(getattr(previous_snapshot, 'five_hour', None), 'remaining', None)} five_hour_remaining_current={snapshot.five_hour.remaining} weekly_remaining_previous={getattr(getattr(previous_snapshot, 'weekly', None), 'remaining', None)} weekly_remaining_current={snapshot.weekly.remaining} active_5h_limit_reset_at={active.get('5時間')} active_weekly_limit_reset_at={active.get('週間')} discord_reset_enabled={self.config.discord_reset}")
             self.diag["最終rate取得"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.diag["5h window"] = str(snapshot.five_hour)
             self.diag["weekly window"] = str(snapshot.weekly)
@@ -268,13 +285,7 @@ class Monitor(threading.Thread):
             self.event("RATE_FETCH")
             self.publish(state, "レート枠を識別できません。診断画面を確認してください。" if state in (State.ERROR, State.DISCONNECTED) else "モックモード" if self.mock else "正常")
             for event in events:
-                event_name = "RATE_LOW" if event.kind == "low" else "LIMIT_5H" if event.kind == "limit" and "5時間" in event.title else "LIMIT_WEEKLY" if event.kind == "limit" and "週間" in event.title else "LIMIT_OTHER" if event.kind == "limit" else "AVAILABLE"
-                self.event(event_name, event.title)
-                if event.kind == "reset":
-                    if "5時間" in event.message.split("枠の上限解除")[0]:
-                        self.event("RESET_5H")
-                    if "週間" in event.message.split("枠の上限解除")[0]:
-                        self.event("RESET_WEEKLY")
+                self.event(event.event_type or event.kind, f"event emitted: {event.title} notification_event_key={event.key}")
                 self.notify(event)
             if self.db:
                 try:
@@ -305,6 +316,15 @@ class Monitor(threading.Thread):
             if not w or not w.reset_at or w.remaining > 0:
                 continue
             remaining = w.reset_at - time.time()
+            if remaining <= 0:
+                event_type = "RATE_5H_RESET_DUE" if name == "5時間" else "RATE_WEEKLY_RESET_DUE"
+                epoch = self.engine.export_state().get("limited_windows", {}).get(name, w.reset_at)
+                key = f"{event_type}:{epoch}"
+                if key not in self.reminder_seen:
+                    self.reminder_seen.add(key)
+                    self.event(event_type, f"notification_event_key={key}")
+                    self.publish(State.WAITING_RESET, "リセット予定時刻に到達しました。最新の両枠を確認します。")
+                    self.next_fetch = 0
             for minutes in self.config.reminders:
                 if 0 < remaining <= minutes * 60:
                     event = Event("reminder", f"reminder:{name}:{w.reset_at}:{minutes}", f"Codex {name}枠のリセット予定まで{minutes}分以内", "これは事前通知です。利用可能になったかは予定時刻後に確認します。")
@@ -312,31 +332,30 @@ class Monitor(threading.Thread):
                         self.reminder_seen.add(event.key)
                         self.notify(event)
 
-    def notify(self, event):
-        if not self.config.notifications_enabled:
-            return
-        for channel in self.notify_queues:
-            prefix = channel.lower()
-            enabled = (channel == "WINDOWS" or self.config.discord_enabled)
-            enabled = enabled and (event.kind == "reminder" or getattr(self.config, f"{prefix}_{event.kind}", False))
-            if enabled:
-                self.enqueue(channel, event, self.webhook)
+    def notify(self, event, url=None):
+        NotificationManager(self.enqueue, self.event).send(event, self.config, self.webhook if url is None else url)
 
     def enqueue(self, channel, event, url):
         if not self.db:
             # 永続重複防止が使えないときは自動送信を抑止。手動テストは可能。
             if event.kind != "test":
+                self.event("NOTIFICATION_SKIPPED", f"notification_event_key={event.key} channel={channel} reason=database_unavailable")
                 return
         else:
             try:
                 if not self.db.claim_notification(event.key, channel):
+                    self.event("NOTIFICATION_SKIPPED", f"notification_event_key={event.key} channel={channel} reason=duplicate")
                     return
             except Exception:
                 self.diag["DB状態"] = "通知重複防止の保存に失敗したため送信を抑止しました"
+                self.event("NOTIFICATION_SKIPPED", f"notification_event_key={event.key} channel={channel} reason=claim_failed")
                 return
         try:
             self.notify_queues[channel].put_nowait((event, url))
+            self.event("NOTIFICATION_QUEUED", f"notification_event_key={event.key} channel={channel}")
         except queue.Full:
+            if self.db:
+                self.db.release_notification(event.key, channel)
             self.event(f"{channel}_NOTIFY_ERROR", "通知キューが満杯です")
 
     def notification_loop(self, channel):
@@ -345,6 +364,7 @@ class Monitor(threading.Thread):
                 event, url = self.notify_queues[channel].get(timeout=0.3)
             except queue.Empty:
                 continue
+            self.log.info("notification_event_key=%s %s_send_attempted=True", event.key, channel.lower())
             jst = datetime.now(timezone(timedelta(hours=9))).strftime("%Y/%m/%d %H:%M:%S JST")
             message = event.message + "\n確認時刻：" + jst
             try:

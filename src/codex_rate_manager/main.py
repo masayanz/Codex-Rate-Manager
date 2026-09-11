@@ -239,6 +239,13 @@ class Application:
             self.history.fill(kind, data)
 
     def on_result(self, kind, success, message):
+        if kind == "Discord設定" and self.settings:
+            box = self.settings.fields["discord_enabled"]
+            blocked = box.blockSignals(True)
+            box.setChecked(self.config.discord_enabled)
+            box.blockSignals(blocked)
+            self.settings.update_discord_status()
+
         if kind == "トレイ表示":
             hide_after = self.hide_after_tray_save
             self.tray_pending = self.hide_after_tray_save = False
@@ -275,6 +282,7 @@ class Application:
         self.settings.sync_tray(self.config.tray_enabled, self.tray_pending)
         self.settings.appearance_changed.connect(self.skins.apply)
         self.settings.finished.connect(self.apply_appearance)
+        self.settings.discord_enabled_changed.connect(lambda enabled: self.monitor.command("discord_enabled", enabled))
         self.settings.save_requested.connect(lambda config, url: self.monitor.command("save", (config, url)))
         self.settings.test_requested.connect(lambda url: self.monitor.command("test", url))
         self.settings.reconnect.connect(lambda: self.monitor.command("reconnect"))
@@ -331,9 +339,23 @@ def main(argv=None):
     parser.add_argument("--data-dir", type=Path, help="開発・検証用の保存先")
     parser.add_argument("--smoke-test", type=int, metavar="SECONDS", help="実アプリを一定時間起動し、診断と画面を保存して終了")
     parser.add_argument("--verify-tray", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--verify-recovery", action="store_true", help="モックのレート復帰・通知経路を検証して終了")
+    parser.add_argument("--live-notifications", action="store_true", help="保存済みWebhookへテスト1回と復帰2回を送信（--verify-recovery必須）")
     args = parser.parse_args(argv)
     if args.verify_tray and not args.mock:
         parser.error("--verify-tray は --mock と併用してください。")
+    if args.verify_recovery and not args.mock:
+        parser.error("--verify-recovery は --mock と併用してください。")
+    if args.live_notifications and not args.verify_recovery:
+        parser.error("--live-notifications は --verify-recovery と併用してください。")
+    if args.verify_recovery:
+        if args.data_dir is None:
+            parser.error("--verify-recovery は空の --data-dir を指定してください。")
+        from .recovery_verification import run_recovery_verification
+        report = run_recovery_verification(args.data_dir, live_notifications=args.live_notifications)
+        if sys.stdout is not None:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report.get("success") else 1
     data_dir = args.data_dir or Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "CodexRateManager" / ("mock" if args.mock else "")
     if os.name == "nt":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("CodexRateManager.Desktop")

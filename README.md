@@ -1,6 +1,6 @@
 # Codex Rate Manager
 
-Codex Plus の5時間枠と週間枠を Codex App Server から定期取得し、残量・リセット時刻・接続状態をタスクトレイから確認する Windows 常駐アプリです。リセット予定時刻だけで利用可能と判断せず、監視対象の両方の枠を再取得して利用可能を確認した後に通知します。
+Codex Plus の5時間枠と週間枠を Codex App Server から定期取得し、残量・リセット時刻・接続状態をタスクトレイから確認する Windows 常駐アプリです。リセット予定時刻だけで利用可能と判断せず、監視対象の両枠を再取得し、各枠の残量が0から正の値へ戻ったときに独立して通知します。もう一方の枠が0%でも復帰通知します。
 
 ## 動作環境
 
@@ -30,6 +30,18 @@ py -3.13 -m venv .venv
 ```
 
 モック状態は診断画面から `AVAILABLE`、`LOW`、`LIMITED_5H`、`LIMITED_WEEKLY`、`RESET`、`DISCONNECTED` に切り替えられます。モックの保存先は `%LOCALAPPDATA%\CodexRateManager\mock` です。`--data-dir <フォルダー>` で保存先を指定できます。`--smoke-test SECONDS` は実アプリを指定秒数だけ起動し、診断情報と画面の確認用レポートを保存して終了します。
+
+復帰イベントの実ワーカー経路は、空の検証用フォルダーで検証できます。HTTP 204とWindows通知を差し替え、結果を `recovery-verification.json`、履歴をDB、遷移を `logs/app.log` に保存します。
+
+```powershell
+.\.venv\Scripts\python.exe -m codex_rate_manager --mock --verify-recovery --data-dir test-artifacts/recovery-mock
+```
+
+保存済みWebhookをメモリへ読み込み、実際のDiscordへテストを1回・復帰通知を2回、Windowsへ復帰通知を2回送る場合は次を使用します。通知にはMock検証と明記します。Webhook URLは出力・保存しません。
+
+```powershell
+.\dist\CodexRateManager.exe --mock --verify-recovery --live-notifications --data-dir test-artifacts/recovery-live
+```
 
 モックを含め、レート確認のために実際のプロンプトを送信したり、レートを消費するCodex操作を実行したりしません。利用可能判定は、応答で確認できた5時間枠・週間枠に限ります。枠が欠落または解釈できない場合は安全側に倒して接続不明として扱います。
 
@@ -116,6 +128,12 @@ Discord通知を有効にした後、設定画面の「Discord通知テスト」
 
 ## トラブルシューティング
 
+Discordのテストだけ届く場合は、設定の「通知を有効にする」「Discord通知を有効にする」「各レート枠の復帰」をすべてONにして保存してください。テストは接続確認のため、自動通知設定OFFでも送信します。設定画面に復帰通知のON/OFFを表示します。
+
+上限・予定時刻到達・確認済み復帰は `RATE_5H_LIMIT_REACHED` / `RATE_5H_RESET_DUE` / `RATE_5H_RECOVERED`（週間は `RATE_WEEKLY_…`）として記録します。5時間・週間の復帰イベントはそれぞれ通知し、同時復帰では各1回通知します。Codex全体の利用可能状態を通知条件には使いません。本文には両枠の残量とリセット日時を表示します。通知履歴テーブルは既存の `notifications` を使用し、`result=1` がSUCCESSです。
+
+ログの `NOTIFICATION_ROUTING` で設定判定、`NOTIFICATION_SKIPPED` で抑止理由、`discord_send_attempted` / `discord_send_result` で試行とHTTP結果を確認できます。イベントキーには制限を最初に観測したリセット時刻を使用します。キュー満杯や送信失敗では通知のclaimを解放し、同一イベントの再処理を妨げないようにします。
+
 「Codex情報を取得できません」と表示される場合は、Codex CLIがPATHにあるか、設定のCodex実行ファイルが正しいか、通常のCLIでログイン済みかを確認してください。アプリは外部の `codex login` を呼び出さず、既存のCodex認証を利用します。
 
 DPAPIエラーが出た場合は、同じWindowsユーザーで起動しているかを確認し、Webhook URLを設定画面から再登録してください。Webhook URLをログやスクリーンショットで共有しないでください。
@@ -127,3 +145,5 @@ Windows通知が見えない場合は、Windowsの通知設定、集中モード
 ## 検証について
 
 実施済みのテストと実機確認、未確認条件は [検証記録](VERIFICATION.md) を参照してください。実Discordへの着信確認には、ご自身のWebhook URLを設定し、テスト送信してください。
+
+Discord通知のON/OFFは設定画面で切り替えた時点で保存します。その他の通知設定は「保存」で反映します。config.jsonを直接編集する場合は、アプリを終了してから編集し、再起動してください。

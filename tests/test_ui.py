@@ -280,3 +280,45 @@ def test_windows_taskbar_settings_uri(running_app, monkeypatch):
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: False)
     running_app.settings.taskbar_settings.click()
     assert "右クリック" in running_app.settings.feedback.text()
+
+
+def test_discord_toggle_save_and_reopen(running_app):
+    from codex_rate_manager.storage import load_config
+    app = running_app
+    for enabled in (True, False, True):
+        app.open_settings()
+        settings = app.settings
+        settings.fields["discord_enabled"].setChecked(enabled)
+        settings.buttons.button(QDialogButtonBox.StandardButton.Save).click()
+        assert wait_for(app.app, lambda: app.config.discord_enabled == enabled and settings.buttons.button(QDialogButtonBox.StandardButton.Save).isEnabled())
+        assert load_config(app.data_dir).discord_enabled == enabled
+        settings.reject()
+        app.open_settings()
+        assert app.settings.fields["discord_enabled"].isChecked() == enabled
+        app.settings.reject()
+
+
+def test_discord_toggle_persists_without_save(running_app):
+    from codex_rate_manager.storage import load_config
+    app = running_app
+    for enabled in (True, False):
+        app.open_settings()
+        app.settings.fields["discord_enabled"].click()
+        assert wait_for(app.app, lambda: app.config.discord_enabled == enabled)
+        assert load_config(app.data_dir).discord_enabled == enabled
+        app.settings.reject()
+    app.open_settings()
+    assert not app.settings.fields["discord_enabled"].isChecked()
+
+
+def test_discord_toggle_save_failure_restores_checkbox(running_app, monkeypatch):
+    import codex_rate_manager.monitor as module
+    app = running_app
+    app.open_settings()
+    def fail(*args):
+        raise OSError("read only")
+    monkeypatch.setattr(module, "save_config", fail)
+    app.settings.fields["discord_enabled"].click()
+    assert wait_for(app.app, lambda: "保存できません" in app.settings.feedback.text())
+    assert not app.config.discord_enabled
+    assert not app.settings.fields["discord_enabled"].isChecked()

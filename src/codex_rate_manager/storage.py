@@ -160,6 +160,9 @@ class Database:
         msg=redact(message); msg=msg if isinstance(msg,str) else json.dumps(msg,ensure_ascii=False)
         success = result if isinstance(result, bool) else str(result).lower() in {"1", "true", "ok", "success", "成功", "sent"}
         self.conn.execute("INSERT INTO notifications VALUES(NULL,?,?,?,?,?)",(time.time(),kind,channel,int(success),msg)); self.conn.commit()
+    def release_notification(self, key, channel):
+        self.conn.execute("DELETE FROM notification_claims WHERE key=? AND channel=?", (key, channel))
+        self.conn.commit()
     def history(self,kind="rates",limit=300):
         if kind == "notifications":
             rows = self.conn.execute("SELECT created_at,kind,channel,result,message FROM notifications ORDER BY id DESC LIMIT ?",(int(limit),)).fetchall()

@@ -136,6 +136,7 @@ class Event:
     key: str
     title: str
     message: str
+    event_type: str = ""
 
 
 class Engine:
@@ -146,6 +147,7 @@ class Engine:
         self._seen: set[str] = set()
         self._limited_windows: dict[str, float | None] = {}
         self._account_key = None
+        self._recovered_windows: set[str] = set()
 
     def accept(self, snapshot: Snapshot, threshold: float = 20) -> list[Event]:
         if snapshot.account_key and self._account_key and snapshot.account_key != self._account_key:
@@ -164,14 +166,19 @@ class Engine:
                 kind = "limit" if window.remaining <= 0 else "low"
                 if kind == "limit":
                     self._limited = True
-                    self._limited_windows[name] = window.reset_at
-                key = f"{kind}:{name}:{window.reset_at}"
+                    if name in self._recovered_windows:
+                        self._limited_windows.pop(name, None)
+                        self._recovered_windows.discard(name)
+                    self._limited_windows.setdefault(name, window.reset_at)
+                epoch = self._limited_windows.get(name, window.reset_at) if kind == "limit" else window.reset_at
+                event_type = ("RATE_5H_LIMIT_REACHED" if name == "5時間" else "RATE_WEEKLY_LIMIT_REACHED" if name == "週間" else "RATE_OTHER_LIMIT_REACHED") if kind == "limit" else "RATE_LOW"
+                key = f"{event_type}:{name}:{epoch}" if kind == "limit" else f"low:{name}:{epoch}"
                 if key in self._seen:
                     continue
                 self._seen.add(key)
                 reset = _format_reset(window.reset_at)
                 title = f"Codex {name}レート上限" if kind == "limit" else f"Codex {name}レート残り{window.remaining:g}%"
-                events.append(Event(kind, key, title, f"現在の残量：{window.remaining:g}%\n次回リセット予定：{reset}\n{_remaining_text(snapshot)}"))
+                events.append(Event(kind, key, title, f"現在の残量：{window.remaining:g}%\n次回リセット予定：{reset}\n{_remaining_text(snapshot)}", event_type))
             if snapshot.blocked_other:
                 self._limited = True
                 self._limited_windows["その他の制限"] = None
@@ -179,20 +186,25 @@ class Engine:
                 if key not in self._seen:
                     self._seen.add(key)
                     events.append(Event("limit", key, "Codex その他の制限に到達", "Codexが利用制限を報告しています。診断情報を確認してください。\n" + _remaining_text(snapshot)))
-        if state in (State.AVAILABLE, State.LOW) and self._limited:
-            # 上限を観測した古いepochを識別子とし、両枠のread確認後だけ復帰通知する。
-            reset_key = "reset:" + ";".join(f"{k}:{v}" for k, v in sorted(self._limited_windows.items()))
-            if reset_key not in self._notified_resets:
-                self._notified_resets.add(reset_key)
-                names = "・".join(self._limited_windows)
-                events.append(Event("reset", reset_key, "Codexが利用可能になりました", f"{names}枠の上限解除を確認しました。\n{_remaining_text(snapshot)}\nCodex作業を再開できます。"))
-            self._limited = False
-            self._limited_windows.clear()
+        # 全体の利用可否とは独立して、各枠の実残量の回復を通知する。
+        if snapshot.five_hour is not None and snapshot.weekly is not None:
+            for name, window in windows:
+                previous_limited = self._previous == {
+                    "5時間": State.LIMITED_5H, "週間": State.LIMITED_WEEKLY,
+                }.get(name, "")
+                if (name in self._limited_windows or previous_limited) and name not in self._recovered_windows and window.remaining > 0:
+                    self._recovered_windows.add(name)
+                    event_type = "RATE_5H_RECOVERED" if name == "5時間" else "RATE_WEEKLY_RECOVERED" if name == "週間" else "RATE_OTHER_RECOVERED"
+                    epoch = self._limited_windows.get(name, window.reset_at)
+                    events.append(Event("reset", f"{event_type}:{epoch}", f"【{name}レート復帰】",
+                                        f"🟢 Codex {name}レートが復帰しました\n\n{_remaining_text(snapshot)}\n\n"
+                                        f"5時間リセット：\n{_format_reset(snapshot.five_hour.reset_at)}\n\n"
+                                        f"週間リセット：\n{_format_reset(snapshot.weekly.reset_at)}", event_type))
         self._previous = state
         return events
 
     def export_state(self) -> dict[str, Any]:
-        return {"previous": self._previous.value if self._previous else None, "limited": self._limited, "limited_windows": self._limited_windows, "notified_resets": sorted(self._notified_resets)[-1000:], "seen": sorted(self._seen)[-2000:], "account_key": self._account_key}
+        return {"previous": self._previous.value if self._previous else None, "limited": self._limited, "limited_windows": dict(self._limited_windows), "recovered_windows": sorted(self._recovered_windows), "notified_resets": sorted(self._notified_resets)[-1000:], "seen": sorted(self._seen)[-2000:], "account_key": self._account_key}
 
     def restore_state(self, data: dict[str, Any]) -> None:
         try:
@@ -204,6 +216,7 @@ class Engine:
         self._notified_resets = set(str(v) for v in data.get("notified_resets", ()))
         self._seen = set(str(v) for v in data.get("seen", ()))
         self._account_key = data.get("account_key")
+        self._recovered_windows = set(data.get("recovered_windows", ()))
 
 
 def _format_reset(epoch):
