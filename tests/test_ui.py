@@ -77,6 +77,17 @@ def test_mock_transitions_and_countdown_stay_responsive(running_app):
     assert app.window.five.remaining.text() == "残り 100%"
 
 
+def test_tray_screenshot_action(running_app):
+    app = running_app
+    action = next(a for a in app.tray.contextMenu().actions() if a.text() == "画面をコピー")
+    app.window.hide()
+    action.trigger()
+    assert wait_for(app.app, lambda: app.window.screenshot_message.text() == "画面をクリップボードへコピーしました")
+    assert app.app.clipboard().mimeData().hasImage()
+    assert wait_for(app.app, lambda: not app.window.isVisible())
+    app.app.clipboard().clear()
+
+
 def test_settings_tabs_save_and_history_diagnostics(running_app):
     app = running_app
     app.open_settings()

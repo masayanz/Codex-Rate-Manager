@@ -5,7 +5,7 @@ from datetime import datetime
 import time
 
 from PySide6.QtCore import Qt, QTimer, Signal, QUrl
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QDesktopServices
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QScrollArea, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar,
@@ -17,6 +17,7 @@ from .storage import Config, accessible_config
 from .meters import RingMeter, SegmentBar, tray_icon
 from .resources import resource_path
 from .skin_manager import SkinManager, default_stylesheet
+from .screenshot_service import ScreenshotController
 
 STYLE = default_stylesheet()
 
@@ -185,6 +186,18 @@ class MainWindow(QMainWindow):
             button.clicked.connect(signal.emit)
             buttons.addWidget(button)
         self.outer.addWidget(self.toolbar)
+        self.screenshot_message = QLabel("")
+        self.screenshot_message.setObjectName("muted")
+        self.screenshot_message.setWordWrap(True)
+        self.outer.addWidget(self.screenshot_message)
+        self.screenshot = ScreenshotController(self)
+        self.screenshot_button = QPushButton("スクショ")
+        self.screenshot_button.setToolTip("画面をコピー (Ctrl+Shift+C)")
+        self.screenshot_button.clicked.connect(self.screenshot.request)
+        buttons.addWidget(self.screenshot_button)
+        self.screenshot_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
+        self.screenshot_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.screenshot_shortcut.activated.connect(self.screenshot.request)
         self.skins.skin_changed.connect(self.apply_skin)
         self.apply_skin()
 

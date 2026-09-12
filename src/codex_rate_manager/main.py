@@ -74,6 +74,7 @@ class Application:
         menu.addAction("履歴", self.open_history)
         menu.addAction("診断", self.open_diagnostics)
         menu.addAction("今すぐ更新", lambda: self.monitor.command("refresh"))
+        menu.addAction("画面をコピー", self.window.screenshot.request)
         menu.addAction("Codexを起動", lambda: self.monitor.command("launch"))
         menu.addAction("Discord通知テスト", lambda: self.monitor.command("test"))
         self.toggle = menu.addAction("通知 ON/OFF")
@@ -89,6 +90,7 @@ class Application:
         # Until then, closing the window must use the safety dialog.
         self.window.tray_enabled = False
         self.monitor = Monitor(data_dir, args.mock)
+        self.window.screenshot.failed.connect(lambda detail: self.monitor.command("screenshot_error", detail))
         self.positions.changed.connect(self.save_position)
         self.skins.skin_changed.connect(self.update_tray)
         self.monitor.signals.update.connect(self.update)

@@ -146,7 +146,9 @@ class Monitor(threading.Thread):
             self.signals.stopped.emit()
 
     def handle(self, name, value):
-        if name in ("refresh", "resume", "reconnect"):
+        if name == "screenshot_error":
+            self.event("SCREENSHOT_ERROR", value)
+        elif name in ("refresh", "resume", "reconnect"):
             if name == "reconnect" and self.client:
                 self.client.close()
                 self.client = None
