@@ -4,6 +4,8 @@ Codex Plus の5時間枠と週間枠を Codex App Server から定期取得し�
 
 ## 動作環境
 
+スクリーンショット付きの操作説明は [利用者マニュアル（HTML）](docs/manual/index.html) を参照してください。ブラウザーで開いて閲覧できます。配布時は `docs/manual` フォルダー全体を渡してください。
+
 - Windows 11
 - Python 3.13（ソース実行時）
 - Codex CLI（既存のログイン状態を利用）
