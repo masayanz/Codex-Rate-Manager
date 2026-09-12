@@ -446,7 +446,7 @@ class HistoryDialog(QDialog):
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
         self.tables = {}
-        for key, title in (("rates", "レート履歴"), ("notifications", "通知履歴"), ("events", "イベント")):
+        for key, title in (("rates", "レート履歴"), ("recoveries", "回復履歴"), ("notifications", "通知履歴"), ("events", "イベント")):
             table = QTableWidget()
             table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             table.setWordWrap(False)

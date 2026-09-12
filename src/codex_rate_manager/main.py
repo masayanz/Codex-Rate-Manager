@@ -52,6 +52,7 @@ class Application:
         self.settings = self.history = self.diagnostics = None
         self.quitting = False
         self.tray_pending = False
+        self.discord_pending = False
         self.hide_after_tray_save = False
         self.close_dialog = None
         self.first_config = True
@@ -242,11 +243,13 @@ class Application:
 
     def on_result(self, kind, success, message):
         if kind == "Discord設定" and self.settings:
+            self.discord_pending = False
             box = self.settings.fields["discord_enabled"]
             blocked = box.blockSignals(True)
             box.setChecked(self.config.discord_enabled)
             box.blockSignals(blocked)
             self.settings.update_discord_status()
+            self.settings.fields["discord_enabled"].setEnabled(True)
 
         if kind == "トレイ表示":
             hide_after = self.hide_after_tray_save
@@ -263,6 +266,8 @@ class Application:
                 return
         if self.settings and self.settings.isVisible():
             self.settings.result(kind, success, message)
+            if self.discord_pending:
+                self.settings.buttons.button(self.settings.buttons.StandardButton.Save).setEnabled(False)
         elif not self.args.smoke_test:
             box = QMessageBox(self.window)
             box.setWindowTitle(kind)
@@ -271,6 +276,16 @@ class Application:
             box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             box.open()
             self.message_box = box
+
+    def request_discord_enabled(self, enabled):
+        if self.discord_pending:
+            return
+        self.discord_pending = True
+        if self.settings:
+            self.settings.fields["discord_enabled"].setEnabled(False)
+            self.settings.buttons.button(self.settings.buttons.StandardButton.Save).setEnabled(False)
+            self.settings.feedback.setText("Discord通知設定を保存しています...")
+        self.monitor.command("discord_enabled", enabled)
 
     def open_settings(self):
         if not self.config_loaded:
@@ -284,7 +299,10 @@ class Application:
         self.settings.sync_tray(self.config.tray_enabled, self.tray_pending)
         self.settings.appearance_changed.connect(self.skins.apply)
         self.settings.finished.connect(self.apply_appearance)
-        self.settings.discord_enabled_changed.connect(lambda enabled: self.monitor.command("discord_enabled", enabled))
+        self.settings.discord_enabled_changed.connect(self.request_discord_enabled)
+        self.settings.fields["discord_enabled"].setEnabled(not self.discord_pending)
+        if self.discord_pending:
+            self.settings.buttons.button(self.settings.buttons.StandardButton.Save).setEnabled(False)
         self.settings.save_requested.connect(lambda config, url: self.monitor.command("save", (config, url)))
         self.settings.test_requested.connect(lambda url: self.monitor.command("test", url))
         self.settings.reconnect.connect(lambda: self.monitor.command("reconnect"))
@@ -342,8 +360,17 @@ def main(argv=None):
     parser.add_argument("--smoke-test", type=int, metavar="SECONDS", help="実アプリを一定時間起動し、診断と画面を保存して終了")
     parser.add_argument("--verify-tray", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--verify-recovery", action="store_true", help="モックのレート復帰・通知経路を検証して終了")
+    parser.add_argument("--verify-increases", action="store_true", help="残量増加9ケースを外部送信なしで検証して終了")
     parser.add_argument("--live-notifications", action="store_true", help="保存済みWebhookへテスト1回と復帰2回を送信（--verify-recovery必須）")
     args = parser.parse_args(argv)
+    if args.verify_increases:
+        if not args.mock or args.data_dir is None or args.live_notifications or args.verify_recovery:
+            parser.error("--verify-increases は --mock と空の --data-dir のみを併用してください。")
+        from .increase_verification import run_increase_verification
+        report = run_increase_verification(args.data_dir)
+        if sys.stdout is not None:
+            print(json.dumps({key: report[key] for key in ("success", "mode", "cases")}, ensure_ascii=True, indent=2))
+        return 0 if report.get("success") else 1
     if args.verify_tray and not args.mock:
         parser.error("--verify-tray は --mock と併用してください。")
     if args.verify_recovery and not args.mock:

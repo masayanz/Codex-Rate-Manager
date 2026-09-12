@@ -333,3 +333,27 @@ def test_discord_toggle_save_failure_restores_checkbox(running_app, monkeypatch)
     assert wait_for(app.app, lambda: "保存できません" in app.settings.feedback.text())
     assert not app.config.discord_enabled
     assert not app.settings.fields["discord_enabled"].isChecked()
+
+
+def test_discord_toggle_blocks_reentry_until_save_finishes(running_app, monkeypatch):
+    import threading
+    import codex_rate_manager.monitor as module
+    app = running_app
+    app.open_settings()
+    release = threading.Event()
+    original = module.save_config
+    def delayed(*args):
+        assert release.wait(3)
+        return original(*args)
+    monkeypatch.setattr(module, "save_config", delayed)
+    try:
+        box = app.settings.fields["discord_enabled"]
+        box.click()
+        assert not box.isEnabled()
+        assert not app.settings.buttons.button(QDialogButtonBox.StandardButton.Save).isEnabled()
+        box.click()
+        assert box.isChecked()
+    finally:
+        release.set()
+    assert wait_for(app.app, lambda: not app.discord_pending)
+    assert app.config.discord_enabled and box.isEnabled()

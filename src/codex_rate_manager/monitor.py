@@ -262,18 +262,12 @@ class Monitor(threading.Thread):
                     self.event("CODEX_CONNECTED")
                 payload = self.client.read_rates()
             snapshot = parse_rates(payload)
-            # A response without either required window is not a usable rate
-            # snapshot.  Fail closed and enter the normal reconnect backoff;
-            # otherwise a malformed response would be treated as a successful
-            # fetch and the next retry could be delayed for several minutes.
-            if snapshot.five_hour is None or snapshot.weekly is None:
-                raise ValueError("required rate window is missing")
-            previous_snapshot = self.snapshot
-            active = self.engine.export_state().get("limited_windows", {})
+            # 有効な枠は単独でも比較する。不完全な応答で全体を使用可能にはしない。
             self.snapshot = snapshot
             state = classify(snapshot, self.config.low_threshold)
             events = self.engine.accept(snapshot, self.config.low_threshold)
-            self.event("RATE_TRANSITION", f"previous_state={self.state.value} current_state={state.value} five_hour_remaining_previous={getattr(getattr(previous_snapshot, 'five_hour', None), 'remaining', None)} five_hour_remaining_current={snapshot.five_hour.remaining} weekly_remaining_previous={getattr(getattr(previous_snapshot, 'weekly', None), 'remaining', None)} weekly_remaining_current={snapshot.weekly.remaining} active_5h_limit_reset_at={active.get('5時間')} active_weekly_limit_reset_at={active.get('週間')} discord_reset_enabled={self.config.discord_reset}")
+            self.event("RATE_COMPARE", json.dumps(self.engine.comparison, ensure_ascii=False))
+            self.event("RATE_TRANSITION", f"previous_state={self.state.value} current_state={state.value} discord_reset_enabled={self.config.discord_reset}")
             self.diag["最終rate取得"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             self.diag["5h window"] = str(snapshot.five_hour)
             self.diag["weekly window"] = str(snapshot.weekly)
@@ -287,13 +281,20 @@ class Monitor(threading.Thread):
             self.event("RATE_FETCH")
             self.publish(state, "レート枠を識別できません。診断画面を確認してください。" if state in (State.ERROR, State.DISCONNECTED) else "モックモード" if self.mock else "正常")
             for event in events:
-                self.event(event.event_type or event.kind, f"event emitted: {event.title} notification_event_key={event.key}")
+                self.event(event.event_type or event.kind, json.dumps({"notification_event_key": event.key, **event.recovery}, ensure_ascii=False) if event.recovery else f"event emitted: {event.title} notification_event_key={event.key}")
+                if self.db and event.recovery:
+                    try:
+                        self.db.record_recovery(event)
+                    except Exception:
+                        self.diag["DB状態"] = "回復履歴の保存に失敗しました"
                 self.notify(event)
             if self.db:
                 try:
                     self.db.save_state(self.engine.export_state())
                 except Exception:
                     self.diag["DB状態"] = "監視状態の保存に失敗しました"
+            if snapshot.five_hour is None or snapshot.weekly is None:
+                raise ValueError("required rate window is missing")
             self.backoff = 30
             self.next_fetch = time.time() + next_delay(snapshot, time.time(), self.config.normal_interval, self.config.near_interval)
         except Exception as exc:
@@ -368,7 +369,7 @@ class Monitor(threading.Thread):
                 continue
             self.log.info("notification_event_key=%s %s_send_attempted=True", event.key, channel.lower())
             jst = datetime.now(timezone(timedelta(hours=9))).strftime("%Y/%m/%d %H:%M:%S JST")
-            message = event.message + "\n確認時刻：" + jst
+            message = event.message if event.recovery else event.message + "\n確認時刻：" + jst
             try:
                 result = DiscordClient().send(url, event.title, message, self.stop_event) if channel == "DISCORD" else send_windows(event.title, message)
             except Exception:

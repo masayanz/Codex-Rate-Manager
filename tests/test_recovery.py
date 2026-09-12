@@ -28,24 +28,24 @@ def test_five_reset_cannot_clear_weekly_limit():
     resets = [e for e in events if e.kind == "reset"]
     assert len(resets) == 1
     assert "週間残量：15%" in resets[0].message
-    assert not any(e.kind == "reset" for e in engine.accept(snapshot(0, 0)))
+    assert [e.event_type for e in engine.accept(snapshot(0, 0)) if e.kind == "reset"] == ["RATE_WEEKLY_RECOVERED"]
 
 
 def test_deadline_and_missing_window_cannot_trigger_recovery():
     engine = Engine()
     engine.accept(snapshot(100, 0))
     assert not any(e.kind == "reset" for e in engine.accept(snapshot(100, 0, fetched=2000)))
-    engine.accept(Snapshot(RateWindow(0, 10000, 300), None))
+    assert any(e.event_type == "RATE_5H_RECOVERED" for e in engine.accept(Snapshot(RateWindow(0, 10000, 300), None)))
     restored = Engine()
     restored.restore_state(engine.export_state())
-    assert len([e for e in restored.accept(snapshot()) if e.kind == "reset"]) == 1
+    assert not [e for e in restored.accept(snapshot()) if e.kind == "reset"]
 
 
 def test_low_alert_once_per_window_not_per_poll():
     engine = Engine()
     assert len(engine.accept(snapshot(85))) == 1
     assert engine.accept(snapshot(86, fetched=200)) == []
-    assert engine.accept(snapshot(0)) == []
+    assert not [e for e in engine.accept(snapshot(0)) if e.kind == "low"]
     assert engine.accept(snapshot(85)) == []
     assert len(engine.accept(snapshot(85, reset=2000))) == 1
 

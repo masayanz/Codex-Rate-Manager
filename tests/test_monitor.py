@@ -42,4 +42,5 @@ def test_missing_required_window_reconnects_with_backoff(tmp_path):
     monitor.fetch()
     assert monitor.state == State.DISCONNECTED
     assert 29 <= monitor.next_fetch - now <= 32
-    assert monitor.snapshot is None
+    assert monitor.snapshot.five_hour.remaining == 90
+    assert monitor.snapshot.weekly is None

@@ -82,3 +82,17 @@ skipはoffscreen環境にシステムトレイがないための1件。同じ機
 - 実アカウントでレート上限に達してからリセットされるまでの長時間監視：モックと回帰テストで検証
 
 Windows通知の成功はOSへの登録を意味する。画面への表示は集中モードやWindowsの通知設定に依存する。
+# 2026-09-12 残量増加による回復検知への変更
+
+この節が現在の回復仕様です。以下の過去の検証記録にある「0%解除のみ」「週間上限が残れば抑止」「最後の全体復帰のみ」の期待値は旧仕様です。
+
+- 5時間・週間を独立に比較し、前回の有効値から1.0ポイント以上の増加で各 `RATE_*_RECOVERED` を生成。予定時刻、UI全体state、他方の残量を条件にしない。
+- 再起動後・アカウント変更後の初回は基準値の保存のみ。欠落枠の基準は維持し、有効な他方は比較する。欠落時は全体を使用可能にしない。
+- 同じ予定時刻内の複数回復は固有イベントキーで各々通知。同値の再取得と同一イベントの再配信は重複しない。
+- 回復通知本文に前回・今回・差分・取得時刻・両枠の現在残量を記載。`recoveries` テーブルと「回復履歴」を追加。
+- Discord設定キーは既存の `discord_enabled` / `discord_reset` を継続。保存中の再操作を防ぎ、保存・再読込・配信設定を検証。
+- 全体テスト：127 passed / 1 skipped。初回の制限内実行ではpytest一時フォルダーへのアクセス拒否があり、制限外で再実行して成功。
+- `--mock --verify-increases`：必須7ケース＋強制補充・22%→73%の計9ケース成功。回復イベント9件、Windows 9件、Discord 9件、手動Discordテスト1件の履歴を確認。
+- Mock検証は実Monitor・DB・NotificationManager・通知ワーカー・DiscordClientを使用し、HTTPだけ204応答、Windows登録だけ成功応答へ置換。実際のDiscord着信・Windows通知表示・運営側の強制リセットの実観測は未確認。
+- 再現用コマンド：`dist\CodexRateManager.exe --mock --verify-increases --data-dir <空の検証用フォルダー>`。結果JSON、DB、実行ログをそのフォルダーへ保存する。
+- 正式ビルド成功後、生成した1ファイルEXE自身でも検証を実行して終了コード0、9ケース成功を確認。今回の結果：`test-artifacts/increase-exe/increase-verification.json`、実行ログ：`test-artifacts/increase-exe/logs/app.log`。

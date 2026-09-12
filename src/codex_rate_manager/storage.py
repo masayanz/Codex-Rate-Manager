@@ -138,6 +138,7 @@ class Database:
         d=Path(data_dir); d.mkdir(parents=True, exist_ok=True); self.conn=sqlite3.connect(d/"rate_history.db")
         self.conn.execute("CREATE TABLE IF NOT EXISTS rates (id INTEGER PRIMARY KEY, fetched_at REAL, five_used REAL, five_remaining REAL, five_reset REAL, weekly_used REAL, weekly_remaining REAL, weekly_reset REAL, state TEXT, limit_type TEXT, version TEXT, snapshot TEXT)")
         self.conn.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, created_at REAL, kind TEXT, message TEXT)")
+        self.conn.execute("CREATE TABLE IF NOT EXISTS recoveries (event_key TEXT PRIMARY KEY, timestamp REAL, event_type TEXT, previous_remaining REAL, current_remaining REAL, delta REAL, five_hour_remaining REAL, weekly_remaining REAL)")
         self.conn.execute("CREATE TABLE IF NOT EXISTS notification_claims (key TEXT, channel TEXT, claimed_at REAL, PRIMARY KEY(key,channel))")
         self.conn.execute("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY, created_at REAL, kind TEXT, channel TEXT, result INTEGER, message TEXT)")
         self.conn.execute("CREATE TABLE IF NOT EXISTS monitor_state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)"); self.conn.commit()
@@ -152,6 +153,12 @@ class Database:
         self.conn.execute("INSERT INTO rates (fetched_at,five_used,five_remaining,five_reset,weekly_used,weekly_remaining,weekly_reset,state,limit_type,version,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (time.time(), five_used, five, getattr(five_window, "reset_at", None), weekly_used, weekly, getattr(weekly_window, "reset_at", None), str(state_value), str(state_value), version, json.dumps(_jsonable(snapshot)))); self.conn.commit()
     def event(self, kind, message=""):
         import time; msg=redact(message); msg=msg if isinstance(msg,str) else json.dumps(msg,ensure_ascii=False); self.conn.execute("INSERT INTO events VALUES(NULL,?,?,?)", (time.time(),kind,msg)); self.conn.commit()
+    def record_recovery(self, event):
+        data = event.recovery
+        self.conn.execute("INSERT OR IGNORE INTO recoveries VALUES(?,?,?,?,?,?,?,?)", (
+            event.key, data["timestamp"], data["event_type"], data["previous_remaining"],
+            data["current_remaining"], data["delta"], data["five_hour_remaining"], data["weekly_remaining"]))
+        self.conn.commit()
     def claim_notification(self,key,channel):
         import time
         try: self.conn.execute("INSERT INTO notification_claims VALUES(?,?,?)",(key,channel,time.time())); self.conn.commit(); return True
@@ -164,6 +171,9 @@ class Database:
         self.conn.execute("DELETE FROM notification_claims WHERE key=? AND channel=?", (key, channel))
         self.conn.commit()
     def history(self,kind="rates",limit=300):
+        if kind == "recoveries":
+            rows = self.conn.execute("SELECT timestamp,event_type,previous_remaining,current_remaining,delta,five_hour_remaining,weekly_remaining FROM recoveries ORDER BY rowid DESC LIMIT ?", (int(limit),)).fetchall()
+            return ["日時", "回復した枠", "前回", "今回", "増加", "5時間残量", "週間残量"], [(_date(r[0]), "5時間" if r[1] == "RATE_5H_RECOVERED" else "週間", _pct(r[2]), _pct(r[3]), "+" + _pct(r[4]), _pct(r[5]), _pct(r[6])) for r in rows]
         if kind == "notifications":
             rows = self.conn.execute("SELECT created_at,kind,channel,result,message FROM notifications ORDER BY id DESC LIMIT ?",(int(limit),)).fetchall()
             return ["日時", "種類", "チャンネル", "結果", "メッセージ"], [(_date(r[0]), r[1], r[2], "成功" if r[3] else "失敗", r[4]) for r in rows]

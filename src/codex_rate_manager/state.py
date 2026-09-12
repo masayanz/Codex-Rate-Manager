@@ -7,6 +7,7 @@ from typing import Any, Iterable
 import math
 import hashlib
 import time
+from uuid import uuid4
 from datetime import datetime
 
 
@@ -137,6 +138,7 @@ class Event:
     title: str
     message: str
     event_type: str = ""
+    recovery: dict[str, Any] | None = None
 
 
 class Engine:
@@ -148,8 +150,10 @@ class Engine:
         self._limited_windows: dict[str, float | None] = {}
         self._account_key = None
         self._recovered_windows: set[str] = set()
+        self._remaining: dict[str, float] = {}
+        self.comparison: dict[str, Any] = {}
 
-    def accept(self, snapshot: Snapshot, threshold: float = 20) -> list[Event]:
+    def accept(self, snapshot: Snapshot, threshold: float = 20, recovery_threshold: float = 1.0) -> list[Event]:
         if snapshot.account_key and self._account_key and snapshot.account_key != self._account_key:
             self.__init__()
         if snapshot.account_key:
@@ -186,20 +190,36 @@ class Engine:
                 if key not in self._seen:
                     self._seen.add(key)
                     events.append(Event("limit", key, "Codex その他の制限に到達", "Codexが利用制限を報告しています。診断情報を確認してください。\n" + _remaining_text(snapshot)))
-        # 全体の利用可否とは独立して、各枠の実残量の回復を通知する。
-        if snapshot.five_hour is not None and snapshot.weekly is not None:
-            for name, window in windows:
-                previous_limited = self._previous == {
-                    "5時間": State.LIMITED_5H, "週間": State.LIMITED_WEEKLY,
-                }.get(name, "")
-                if (name in self._limited_windows or previous_limited) and name not in self._recovered_windows and window.remaining > 0:
-                    self._recovered_windows.add(name)
-                    event_type = "RATE_5H_RECOVERED" if name == "5時間" else "RATE_WEEKLY_RECOVERED" if name == "週間" else "RATE_OTHER_RECOVERED"
-                    epoch = self._limited_windows.get(name, window.reset_at)
-                    events.append(Event("reset", f"{event_type}:{epoch}", f"【{name}レート復帰】",
-                                        f"🟢 Codex {name}レートが復帰しました\n\n{_remaining_text(snapshot)}\n\n"
-                                        f"5時間リセット：\n{_format_reset(snapshot.five_hour.reset_at)}\n\n"
-                                        f"週間リセット：\n{_format_reset(snapshot.weekly.reset_at)}", event_type))
+        # 各枠の前回成功値と比較する。時刻・全体state・他方の残量は条件にしない。
+        # 欠落枠は基準を更新せず、再起動時は保存された旧stateから回復を推測しない。
+        self.comparison = {}
+        for name, code, window in (("5時間", "5h", snapshot.five_hour), ("週間", "weekly", snapshot.weekly)):
+            previous = self._remaining.get(code)
+            current = window.remaining if window else None
+            delta = round(current - previous, 10) if current is not None and previous is not None else None
+            self.comparison.update({f"previous_{code}": previous, f"current_{code}": current, f"delta_{code}": delta})
+            if current is None:
+                continue
+            self._remaining[code] = current
+            if delta is None or delta <= 0 or delta < recovery_threshold:
+                continue
+            self._recovered_windows.add(name)
+            event_type = "RATE_5H_RECOVERED" if code == "5h" else "RATE_WEEKLY_RECOVERED"
+            details = {"timestamp": snapshot.fetched_at, "event_type": event_type,
+                       "previous_remaining": previous, "current_remaining": current, "delta": delta,
+                       "five_hour_remaining": getattr(snapshot.five_hour, "remaining", None),
+                       "weekly_remaining": getattr(snapshot.weekly, "remaining", None)}
+            # 同じresetAt内の再補充も別イベント。再配信時はこのキーを引き継ぐ。
+            events.append(Event("reset", f"{event_type}:{uuid4().hex}", f"🟢 Codex {name}レートが回復しました",
+                                f"{_remaining_text(snapshot)}\n\n前回{name}：{previous:g}%\n今回{name}：{current:g}%\n"
+                                f"増加：+{delta:g}%\n\n確認時刻：{_format_reset(snapshot.fetched_at)}\n\n"
+                                f"5時間リセット：\n{_format_reset(getattr(snapshot.five_hour, 'reset_at', None))}\n\n"
+                                f"週間リセット：\n{_format_reset(getattr(snapshot.weekly, 'reset_at', None))}", event_type, details))
+        # 追加のレート枠の従来の0%解除通知は維持する。
+        for name, window in windows[2:]:
+            if name in self._limited_windows and name not in self._recovered_windows and window.remaining > 0:
+                self._recovered_windows.add(name)
+                events.append(Event("reset", f"RATE_OTHER_RECOVERED:{name}:{uuid4().hex}", f"Codex {name}レートが回復しました", _remaining_text(snapshot), "RATE_OTHER_RECOVERED"))
         self._previous = state
         return events
 
@@ -207,6 +227,8 @@ class Engine:
         return {"previous": self._previous.value if self._previous else None, "limited": self._limited, "limited_windows": dict(self._limited_windows), "recovered_windows": sorted(self._recovered_windows), "notified_resets": sorted(self._notified_resets)[-1000:], "seen": sorted(self._seen)[-2000:], "account_key": self._account_key}
 
     def restore_state(self, data: dict[str, Any]) -> None:
+        self._remaining = {}
+        self.comparison = {}
         try:
             self._previous = State(data["previous"]) if data.get("previous") else None
         except (ValueError, TypeError):
@@ -227,7 +249,9 @@ def _format_reset(epoch):
 
 
 def _remaining_text(snapshot):
-    return f"5時間残量：{snapshot.five_hour.remaining:g}%\n週間残量：{snapshot.weekly.remaining:g}%"
+    def value(window):
+        return f"{window.remaining:g}%" if window else "未取得"
+    return f"5時間残量：{value(snapshot.five_hour)}\n週間残量：{value(snapshot.weekly)}"
 
 
 def next_delay(snapshot: Snapshot | None, now: float | None = None, normal: float = 300, near: float = 60) -> float:

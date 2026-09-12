@@ -20,7 +20,7 @@ def recovery_events(events):
     return [event for event in events if event.event_type.endswith("_RECOVERED")]
 
 
-def test_five_hour_recovery_emits_dedicated_event_once_with_active_epoch():
+def test_five_hour_recovery_emits_dedicated_event_once_without_epoch_key():
     engine = Engine()
 
     assert engine.accept(snapshot(0, 50, five_reset=1_000.0))
@@ -30,7 +30,7 @@ def test_five_hour_recovery_emits_dedicated_event_once_with_active_epoch():
     assert len(recovered) == 1
     assert recovered[0].event_type == "RATE_5H_RECOVERED"
     assert recovered[0].kind == "reset"
-    assert "1000.0" in recovered[0].key
+    assert recovered[0].recovery["delta"] == 100
     assert recovery_events(engine.accept(snapshot(100, 50, five_reset=2_000.0))) == []
 
 
@@ -89,14 +89,13 @@ def test_initial_available_does_not_emit_recovery_event():
     assert recovery_events(Engine().accept(snapshot(100, 50))) == []
 
 
-def test_limit_epoch_jitter_and_restart_keep_original_recovery_key():
+def test_limit_epoch_jitter_and_restart_establish_new_baseline():
     engine = Engine()
     engine.accept(snapshot(0, 50, five_reset=1000.0))
     assert engine.accept(snapshot(0, 50, five_reset=1001.0)) == []
     restored = Engine()
     restored.restore_state(engine.export_state())
-    event, = recovery_events(restored.accept(snapshot(100, 50, five_reset=2000.0)))
-    assert event.key == "RATE_5H_RECOVERED:1000.0"
+    assert recovery_events(restored.accept(snapshot(100, 50, five_reset=2000.0))) == []
 
 
 def test_partial_recovery_survives_restart_without_repeating_five_hour_event():
@@ -186,12 +185,12 @@ def test_weekly_recovery_routes_discord_while_five_hour_is_zero(tmp_path):
     monitor.db.close()
 
 
-def test_previous_limited_state_recovers_without_saved_window():
+def test_previous_limited_state_does_not_replace_first_baseline():
     for state, event_type in (("LIMITED_5H", "RATE_5H_RECOVERED"), ("LIMITED_WEEKLY", "RATE_WEEKLY_RECOVERED")):
         engine = Engine()
         engine.restore_state({"previous": state})
         events = recovery_events(engine.accept(snapshot(100, 100)))
-        assert [event.event_type for event in events] == [event_type]
+        assert events == []
         assert recovery_events(engine.accept(snapshot(100, 100))) == []
 
 

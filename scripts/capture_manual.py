@@ -5,6 +5,7 @@ os.environ["QT_SCALE_FACTOR"] = "1.5"
 
 from pathlib import Path
 import time
+import sys
 from PySide6.QtTest import QTest
 from PySide6.QtGui import QFontDatabase, QFont
 from PySide6.QtWidgets import QApplication, QTabWidget
@@ -26,6 +27,8 @@ snapshot = Snapshot(RateWindow(28, now + 3 * 3600, 300), RateWindow(46, now + 3 
 window.update_status(snapshot, "AVAILABLE", "正常（サンプル）")
 
 def capture(widget, name):
+    if len(sys.argv) > 1 and name not in sys.argv[1:]:
+        return
     widget.show()
     QTest.qWait(400)
     assert widget.grab().save(str(output / f"{name}.png"))
@@ -50,6 +53,10 @@ settings.hide()
 history = HistoryDialog(window)
 history.fill("rates", ([], [("2026/09/12 15:00:00", 28, "72%", None, 46, "54%", None, "AVAILABLE"), ("2026/09/12 14:55:00", 100, "0%", None, 46, "54%", None, "LIMITED_5H")]))
 capture(history, "history")
+history.fill("recoveries", (["日時", "回復した枠", "前回", "今回", "増加", "5時間残量", "週間残量"],
+                             [("2026/09/12 18:05:00", "5時間", "22.0%", "73.0%", "+51.0%", "73.0%", "47.0%")]))
+history.tabs.setCurrentIndex(1)
+capture(history, "recoveries")
 history.hide()
 diagnostics = DiagnosticsDialog(window)
 diagnostics.update_data({"接続状態": "接続済み（マニュアル用サンプル）", "DB状態": "正常", "5時間枠": "残量 72%", "週間枠": "残量 54%"})
