@@ -1,16 +1,18 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+import json
 import time
 
 from types import SimpleNamespace
 from dataclasses import replace
 
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QTabWidget
 
 from codex_rate_manager.main import Application
+from codex_rate_manager.storage import load_config
 
 
 @pytest.fixture(scope="module")
@@ -55,6 +57,79 @@ def wait_for(app, predicate, timeout=3):
             return True
         time.sleep(0.02)
     return predicate()
+
+
+def test_display_modes_have_expected_flags_and_compact_content(running_app):
+    window = running_app.window
+    window.show()
+    window.set_display_mode("bar")
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert window.bar_panel.isVisible()
+    assert 420 <= window.width() <= 500
+    assert 42 <= window.height() <= 56
+    assert window.bar_five.isVisible() and window.bar_weekly.isVisible()
+    assert window.compact_five.value is not None and window.compact_weekly.value is not None
+    assert running_app.mode_actions["bar"].isChecked()
+    running_app.set_display_mode("bar")
+    assert running_app.mode_actions["bar"].isChecked()
+    assert sum(action.isChecked() for action in running_app.mode_actions.values()) == 1
+    window.set_display_mode("mini")
+    assert window.minimumWidth() == 180
+    assert not window.compact_reset.isVisible()
+    assert window.compact_five.isVisible() and window.compact_weekly.isVisible()
+    window.set_display_mode("standard")
+    assert not (window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+    assert window.scroll.isVisible()
+
+
+def test_display_mode_geometry_is_saved_independently(running_app):
+    app = running_app
+    positions = {}
+    for mode, point in (("standard", (100, 120)), ("bar", (180, 140)), ("mini", (260, 160))):
+        app.set_display_mode(mode)
+        app.window.move(*point)
+        positions[mode] = app.positions.capture()
+        app.config.window_positions[mode] = positions[mode]
+    app.set_display_mode("standard")
+    app.positions.restore_geometry("standard", positions["standard"])
+    assert app.positions.capture()["x"] == positions["standard"]["x"]
+    app.set_display_mode("bar")
+    app.positions.restore_geometry("bar", positions["bar"])
+    assert app.positions.capture()["width"] == positions["bar"]["width"]
+    app.set_display_mode("mini")
+    app.positions.restore_geometry("mini", positions["mini"])
+    assert app.positions.capture()["width"] == positions["mini"]["width"]
+
+
+def test_old_window_config_migrates_to_standard(tmp_path):
+    old = {"window": {"x": 100, "y": 200, "width": 520, "height": 720, "screen": ""}}
+    (tmp_path / "config.json").write_text(json.dumps(old), encoding="utf-8")
+    config = load_config(tmp_path)
+    assert config.display_mode == "standard"
+    assert config.window_positions["standard"] == old["window"]
+
+
+def test_settings_mode_syncs_after_tray_mode_change(running_app):
+    app = running_app
+    app.open_settings()
+    assert app.settings is not None
+    app.set_display_mode("bar")
+    app.on_config(app.config, app.has_webhook)
+    assert app.settings.display_mode.currentData() == "bar"
+
+
+def test_compact_bars_have_practical_width_and_stale_state(running_app):
+    app = running_app
+    app.set_display_mode("mini")
+    app.window.show()
+    app.app.processEvents()
+    assert app.window.compact_five.width() >= 120
+    assert app.window.compact_weekly.width() >= 120
+    app.window.compact_five.set_value(52)
+    app.window.compact_five.set_value(10)
+    assert app.window.compact_five.value == 10
+    app.window.compact_five.set_value(10, stale=True)
+    assert app.window.compact_five.stale is True
 
 
 def test_mock_transitions_and_countdown_stay_responsive(running_app):

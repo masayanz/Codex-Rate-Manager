@@ -7,14 +7,14 @@ import time
 from PySide6.QtCore import Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QScrollArea, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
+    QBoxLayout, QCheckBox, QComboBox, QScrollArea, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressBar,
     QPushButton, QSpinBox, QSystemTrayIcon, QTabWidget, QTableWidget,
     QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QHeaderView, QSizePolicy,
 )
 
 from .storage import Config, accessible_config
-from .meters import RingMeter, SegmentBar, tray_icon
+from .meters import CompactRateBar, RingMeter, SegmentBar, tray_icon
 from .resources import resource_path
 from .skin_manager import SkinManager, default_stylesheet
 from .screenshot_service import ScreenshotController
@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
     diagnostics_requested = Signal()
     quit_requested = Signal()
     close_without_tray = Signal()
+    display_mode_changed = Signal(str)
 
     def __init__(self, mock=False, skins=None):
         super().__init__()
@@ -118,6 +119,8 @@ class MainWindow(QMainWindow):
         self.resize(520, 720)
         self.setMaximumWidth(560)
         self.tray_enabled = True
+        self.display_mode = "standard"
+        self._drag_offset = None
         self.exiting = False
         self.setWindowIcon(QIcon(str(resource_path("assets/app.ico"))))
         central = QWidget()
@@ -175,6 +178,57 @@ class MainWindow(QMainWindow):
         self.updated.setObjectName("muted")
         connection_layout.addWidget(self.updated)
         layout.addWidget(connection_panel)
+        self.compact_panel = QFrame()
+        self.compact_panel.setObjectName("card")
+        compact_layout = QVBoxLayout(self.compact_panel)
+        compact_layout.setContentsMargins(8, 4, 8, 4)
+        compact_layout.setSpacing(0)
+        self.compact_status = QLabel("● CODEX")
+        self.compact_five = CompactRateBar("5H", self.skins)
+        self.compact_weekly = CompactRateBar("WEEK", self.skins)
+        self.compact_reset = QLabel("RESET —")
+        self.compact_mini_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.compact_mini_layout.setSpacing(2)
+        self.compact_mini_layout.addWidget(self.compact_five)
+        self.compact_mini_layout.addWidget(self.compact_weekly)
+        for label in (self.compact_status, self.compact_reset):
+            label.setObjectName("status")
+        compact_header = QHBoxLayout()
+        compact_header.addWidget(self.compact_status, 0)
+        compact_header.addStretch()
+        compact_layout.addLayout(compact_header)
+        compact_layout.addLayout(self.compact_mini_layout, 1)
+        compact_layout.addStretch()
+        self.compact_refresh = QPushButton("↻")
+        self.compact_refresh.setToolTip("今すぐ更新")
+        self.compact_refresh.clicked.connect(self.refresh.emit)
+        self.compact_settings = QPushButton("⚙")
+        self.compact_settings.setToolTip("設定")
+        self.compact_settings.clicked.connect(self.settings_requested.emit)
+        self.compact_close = QPushButton("×")
+        self.compact_close.setToolTip("タスクトレイへ格納")
+        self.compact_close.clicked.connect(self.close)
+        for button in (self.compact_refresh, self.compact_settings, self.compact_close):
+            compact_header.addWidget(button)
+        compact_header.insertWidget(compact_header.count() - 3, self.compact_reset)
+        self.outer.addWidget(self.compact_panel)
+        self.compact_panel.hide()
+        self.bar_panel = QFrame()
+        self.bar_panel.setObjectName("card")
+        bar_layout = QHBoxLayout(self.bar_panel)
+        bar_layout.setContentsMargins(4, 2, 4, 2)
+        bar_layout.setSpacing(5)
+        self.bar_five = CompactRateBar("5H", self.skins, "bar")
+        self.bar_weekly = CompactRateBar("1W", self.skins, "bar")
+        self.bar_close = QPushButton("×")
+        self.bar_close.setFixedSize(22, 22)
+        self.bar_close.setToolTip("タスクトレイへ格納")
+        self.bar_close.clicked.connect(self.close)
+        bar_layout.addWidget(self.bar_five, 1)
+        bar_layout.addWidget(self.bar_weekly, 1)
+        bar_layout.addWidget(self.bar_close, 0)
+        self.outer.addWidget(self.bar_panel)
+        self.bar_panel.hide()
         self.toolbar = QWidget()
         buttons = QHBoxLayout(self.toolbar)
         buttons.setContentsMargins(0, 0, 0, 0)
@@ -198,6 +252,9 @@ class MainWindow(QMainWindow):
         self.screenshot_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         self.screenshot_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         self.screenshot_shortcut.activated.connect(self.screenshot.request)
+        self.compact_timer = QTimer(self)
+        self.compact_timer.timeout.connect(self._update_compact_reset)
+        self.compact_timer.start(1000)
         self.skins.skin_changed.connect(self.apply_skin)
         self.apply_skin()
 
@@ -205,8 +262,11 @@ class MainWindow(QMainWindow):
         tokens = self.skins.tokens
         margin = tokens.layout("outer_margin", 18)
         self.outer.setContentsMargins(margin, margin, margin, margin)
+        if self.display_mode == "bar":
+            self.outer.setContentsMargins(2, 2, 2, 2)
         self.content_layout.setSpacing(tokens.layout("card_spacing", 10))
         self.status.setStyleSheet(f"color: {tokens.state_color(self.state)};")
+        self.compact_status.setStyleSheet(f"color: {tokens.state_color(self.state)};")
         self.update()
 
     def update_status(self, snapshot, state, detail):
@@ -219,6 +279,20 @@ class MainWindow(QMainWindow):
         self.weekly.update_rate(snapshot.weekly if snapshot else None, stale)
         self.connection.setText(("● ONLINE   " if not stale else "● OFFLINE   ") + "Codex接続：" + detail)
         self.updated.setText(("最終成功：" if stale else "最終更新：") + (local_date(snapshot.fetched_at) if snapshot else "—"))
+        five = snapshot.five_hour if snapshot else None
+        weekly = snapshot.weekly if snapshot else None
+        self.compact_status.setText("● " + ("ONLINE" if not stale else "OFFLINE"))
+        self.compact_status.setStyleSheet(f"color: {self.skins.tokens.state_color(state)};")
+        self.compact_five.set_value(five.remaining if five else None, stale=stale)
+        self.compact_weekly.set_value(weekly.remaining if weekly else None, stale=stale)
+        self.bar_five.set_value(five.remaining if five else None, stale=stale)
+        self.bar_weekly.set_value(weekly.remaining if weekly else None, stale=stale)
+        self.compact_reset.setText("RESET " + countdown(five.reset_at).replace("あと ", "") if five else "RESET —")
+
+    def _update_compact_reset(self):
+        if self.display_mode == "standard":
+            return
+        self.compact_reset.setText("RESET " + countdown(self.five.window.reset_at).replace("あと ", "") if self.five.window else "RESET —")
 
     def show_front(self):
         if self.position_manager:
@@ -228,6 +302,60 @@ class MainWindow(QMainWindow):
             self.position_manager.ensure_visible()
         self.raise_()
         self.activateWindow()
+
+    def set_display_mode(self, mode: str):
+        mode = mode if mode in ("standard", "bar", "mini") else "standard"
+        was_visible = self.isVisible()
+        self.display_mode = mode
+        compact = mode != "standard"
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, compact)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, compact)
+        self.setMinimumSize(180 if mode == "mini" else 420 if mode == "bar" else 420, 80 if mode == "mini" else 42 if mode == "bar" else 500)
+        self.setMaximumSize(300 if mode == "mini" else 1200 if mode == "bar" else 560, 160 if mode == "mini" else 180 if mode == "bar" else 1200)
+        self.toolbar.setVisible(mode == "standard")
+        self.screenshot_message.setVisible(mode == "standard")
+        self.scroll.setVisible(mode == "standard")
+        self.compact_panel.setVisible(compact)
+        self.bar_panel.setVisible(mode == "bar")
+        mini = mode == "mini"
+        self.compact_mini_layout.setDirection(QBoxLayout.Direction.TopToBottom if mini else QBoxLayout.Direction.LeftToRight)
+        bar = mode == "bar"
+        self.compact_panel.setVisible(mode == "mini")
+        self.bar_panel.setVisible(bar)
+        self.compact_reset.setVisible(not mini and not bar)
+        self.compact_refresh.setVisible(not mini and not bar)
+        self.compact_settings.setVisible(not mini and not bar)
+        self.compact_status.setVisible(not bar)
+        if mode == "bar":
+            self.outer.setContentsMargins(2, 2, 2, 2)
+            self.resize(450, 48)
+        elif mode == "mini":
+            self.resize(240, 120)
+        else:
+            self.outer.setContentsMargins(self.skins.tokens.layout("outer_margin", 18), self.skins.tokens.layout("outer_margin", 18), self.skins.tokens.layout("outer_margin", 18), self.skins.tokens.layout("outer_margin", 18))
+            self.resize(520, 720)
+        self.display_mode_changed.emit(mode)
+        if was_visible:
+            self.showNormal()
+            self.raise_(); self.activateWindow()
+
+    def mousePressEvent(self, event):
+        if self.display_mode != "standard" and event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
 
     def closeEvent(self, event):
         if self.exiting:
@@ -282,6 +410,11 @@ class SettingsDialog(QDialog):
         hint = QLabel("表示切替は即時反映・保存されます。\nWindows側の表示位置はWindowsの設定で変更できます。")
         hint.setWordWrap(True)
         general.addRow(hint)
+        self.display_mode = QComboBox()
+        for label, value in (("標準サイズ", "standard"), ("横長バー", "bar"), ("ミニ", "mini")):
+            self.display_mode.addItem(label, value)
+        self.display_mode.setCurrentIndex(max(0, self.display_mode.findData(config.display_mode)))
+        general.addRow("表示モード", self.display_mode)
         self.taskbar_settings = QPushButton("Windowsの通知領域設定を開く")
         self.taskbar_settings.clicked.connect(self.open_taskbar_settings)
         general.addRow(self.taskbar_settings)
@@ -420,6 +553,7 @@ class SettingsDialog(QDialog):
         values = {key: widget.isChecked() if isinstance(widget, QCheckBox) else widget.value() for key, widget in self.fields.items()}
         values["skin_id"] = self.skin_select.currentData()
         values["tray_style"] = self.tray_style.currentData()
+        values["display_mode"] = self.display_mode.currentData()
         values["reminders"] = [minute for minute, box in self.reminders.items() if box.isChecked()]
         values["codex_path"] = self.codex_path.text().strip()
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)

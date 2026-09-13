@@ -10,7 +10,7 @@ import sys
 import time
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QTimer, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QActionGroup, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
@@ -67,6 +67,15 @@ class Application:
         self.tray.setToolTip("Codex Rate Manager\nCodexへ接続しています...")
         menu = QMenu()
         menu.addAction("Codex Rate Managerを開く", self.window.show_front)
+        mode_menu = menu.addMenu("表示モード")
+        self.mode_actions = {}
+        self.mode_action_group = QActionGroup(mode_menu)
+        self.mode_action_group.setExclusive(True)
+        for label, mode in (("標準サイズ", "standard"), ("横長バー", "bar"), ("ミニ", "mini")):
+            action = mode_menu.addAction(label, lambda checked=False, value=mode: self.set_display_mode(value))
+            action.setCheckable(True)
+            self.mode_action_group.addAction(action)
+            self.mode_actions[mode] = action
         self.tray_five = menu.addAction("5時間レート：未取得")
         self.tray_weekly = menu.addAction("週間レート：未取得")
         self.tray_five.setEnabled(False)
@@ -106,6 +115,7 @@ class Application:
         self.window.diagnostics_requested.connect(self.open_diagnostics)
         self.window.quit_requested.connect(self.quit)
         self.window.close_without_tray.connect(self.confirm_close_without_tray)
+        self.window.display_mode_changed.connect(self.set_display_mode)
         self.server.newConnection.connect(self.activate_existing)
         self.last_tick = time.time()
         self.timer = QTimer(app)
@@ -165,7 +175,26 @@ class Application:
 
     def save_position(self, value):
         if self.config_loaded and not self.quitting:
-            self.monitor.command("window", value)
+            positions = dict(self.config.window_positions)
+            positions[self.window.display_mode] = value
+            self.monitor.command("window", {"mode": self.window.display_mode, "geometry": value, "positions": positions})
+
+    def set_display_mode(self, mode):
+        if mode not in ("standard", "bar", "mini") or not self.config_loaded:
+            return
+        old = self.window.display_mode
+        if old == mode:
+            if mode in self.mode_actions:
+                self.mode_actions[mode].setChecked(True)
+            return
+        positions = dict(self.config.window_positions)
+        positions[old] = self.positions.capture()
+        self.config = replace(self.config, display_mode=mode, window_positions=positions)
+        self.window.set_display_mode(mode)
+        self.positions.restore_geometry(mode, positions.get(mode))
+        for key, action in self.mode_actions.items():
+            action.setChecked(key == mode)
+        self.monitor.command("save", (self.config, None))
 
     def apply_appearance(self, *args):
         self.skins.apply(self.config.skin_id, self.config.glow_enabled, self.config.animation_enabled)
@@ -221,7 +250,10 @@ class Application:
         self.config_loaded = True
         self.apply_appearance()
         if self.first_config:
-            self.positions.restore(config.window)
+            self.window.set_display_mode(config.display_mode)
+            self.positions.restore_geometry(config.display_mode, config.window_positions.get(config.display_mode) or config.window)
+        for key, action in self.mode_actions.items():
+            action.setChecked(key == config.display_mode)
         self.set_tray_visible(config.tray_enabled)
         self.toggle.setChecked(config.notifications_enabled)
         self.update_tray()
@@ -230,6 +262,10 @@ class Application:
         self.first_config = False
         if self.settings:
             self.settings.config = config
+            combo = self.settings.display_mode
+            blocked = combo.blockSignals(True)
+            combo.setCurrentIndex(combo.findData(config.display_mode))
+            combo.blockSignals(blocked)
             self.settings.sync_tray(config.tray_enabled, self.tray_pending)
 
     def on_diagnostics(self, data):
@@ -298,6 +334,7 @@ class Application:
         self.settings.tray_visibility_changed.connect(self.request_tray_visibility)
         self.settings.sync_tray(self.config.tray_enabled, self.tray_pending)
         self.settings.appearance_changed.connect(self.skins.apply)
+        self.settings.display_mode.currentIndexChanged.connect(lambda: self.set_display_mode(self.settings.display_mode.currentData()))
         self.settings.finished.connect(self.apply_appearance)
         self.settings.discord_enabled_changed.connect(self.request_discord_enabled)
         self.settings.fields["discord_enabled"].setEnabled(not self.discord_pending)
@@ -339,7 +376,9 @@ class Application:
         self.window.connection.setText("監視を停止しています...")
         self.window.setEnabled(False)
         self.positions.ensure_visible()
-        self.monitor.command("shutdown", self.positions.capture())
+        positions = dict(self.config.window_positions)
+        positions[self.window.display_mode] = self.positions.capture()
+        self.monitor.command("shutdown", {"mode": self.window.display_mode, "geometry": positions[self.window.display_mode], "positions": positions})
         if not self.monitor.is_alive():
             self.finished()
 

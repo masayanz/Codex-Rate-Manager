@@ -217,7 +217,13 @@ class Monitor(threading.Thread):
         elif name in ("window", "shutdown"):
             try:
                 from .storage import valid_window
-                if valid_window(value):
+                if isinstance(value, dict) and isinstance(value.get("geometry"), dict):
+                    geometry = value["geometry"]
+                    if valid_window(geometry):
+                        self.config.window_positions = dict(value.get("positions", self.config.window_positions))
+                        self.config.window = self.config.window_positions.get("standard", self.config.window)
+                        save_config(self.data_dir, self.config)
+                elif valid_window(value):
                     self.config.window = dict(value)
                     save_config(self.data_dir, self.config)
             finally:

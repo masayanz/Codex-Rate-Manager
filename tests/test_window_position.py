@@ -94,3 +94,13 @@ def test_fully_offscreen_window_uses_primary_screen(qapp):
     assert restored.top() >= area.top()
     manager.deleteLater()
     window.deleteLater()
+
+
+def test_bar_restore_normalizes_legacy_size(qapp):
+    window = QWidget()
+    manager = WindowPositionManager(window)
+    restored = manager.restore_geometry("bar", {"x": 80, "y": 90, "width": 850, "height": 96, "screen": ""})
+    assert restored.width() == 450
+    assert restored.height() == 48
+    manager.deleteLater()
+    window.deleteLater()

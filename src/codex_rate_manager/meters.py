@@ -1,6 +1,6 @@
 """Shared, DPI-independent rate meters for the panel and notification area."""
 from PySide6.QtCore import Qt, QRectF, QVariantAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QFont, QRadialGradient
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QFont, QRadialGradient, QLinearGradient
 from PySide6.QtWidgets import QWidget
 from .skin_manager import default_tokens
 from .resources import resource_path
@@ -145,4 +145,56 @@ class SegmentBar(QWidget):
             active = self.value is not None and i < round(self.value / 5)
             p.setBrush(QColor(rate_color(self.value, tokens) if active else tokens.color("disabled")))
             p.drawRoundedRect(QRectF(i * width, 1, max(1, width - 3), 10), 2, 2)
+        p.end()
+
+
+class CompactRateBar(QWidget):
+    """Compact horizontal remaining-rate bar shared by BAR and MINI modes."""
+    def __init__(self, title, skins=None, compact_kind="mini"):
+        super().__init__()
+        self.title = title
+        self.compact_kind = compact_kind
+        self.skins = skins
+        self.value = None
+        self.stale = False
+        self.setMinimumWidth(90)
+        self.setMinimumHeight(16)
+        if skins:
+            skins.skin_changed.connect(self.update)
+
+    def set_value(self, value, stale=False):
+        self.value = value
+        self.stale = stale
+        self.update()
+
+    def paintEvent(self, event):
+        tokens = self.skins.tokens if self.skins else default_tokens()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        label_w = 24 if self.compact_kind == "bar" else 42
+        percent_w = 34 if self.compact_kind == "bar" else 42
+        bar = QRectF(label_w, 4, max(1, self.width() - label_w - percent_w - 6), max(8, self.height() - 8))
+        p.setPen(QColor(tokens.color("text_primary")))
+        p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        p.drawText(QRectF(0, 0, label_w - 4, self.height()), Qt.AlignmentFlag.AlignVCenter, self.title)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(tokens.color("disabled")))
+        p.drawRoundedRect(bar, 4, 4)
+        if self.value is not None:
+            fill = max(2, bar.width() * max(0, min(100, float(self.value))) / 100)
+            color = QColor(rate_color(self.value, tokens))
+            if self.stale:
+                color.setAlpha(110)
+            gradient = QLinearGradient(bar.topLeft(), bar.topRight())
+            lighter = QColor(color).lighter(115)
+            if self.stale:
+                lighter.setAlpha(110)
+            gradient.setColorAt(0, lighter)
+            gradient.setColorAt(1, color)
+            p.setBrush(gradient)
+            p.drawRoundedRect(QRectF(bar.x(), bar.y(), fill, bar.height()), 4, 4)
+        p.setPen(QColor(tokens.color("text_secondary") if self.value is None else tokens.color("text_primary")))
+        p.setFont(QFont("Segoe UI", 9))
+        text = "—%" if self.value is None else f"{self.value:.0f}%"
+        p.drawText(QRectF(self.width() - percent_w, 0, percent_w, self.height()), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, text)
         p.end()

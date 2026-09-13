@@ -151,6 +151,33 @@ class WindowPositionManager(QObject):
         self._last = self.capture()
         return self.window.frameGeometry()
 
+    def save_geometry(self, mode: str) -> dict[str, Any]:
+        return self.capture()
+
+    def restore_geometry(self, mode: str, value: dict[str, Any] | None = None) -> QRect:
+        if mode == "bar" and value:
+            value = {**value, "width": 450, "height": 48}
+        if value:
+            return self.restore(value)
+        default = self.get_default_geometry(mode)
+        screen = self._screen_for_rect(default) or self._primary()
+        if screen is not None:
+            default = clamp_rect(default, screen.availableGeometry())
+        result = self._set_frame_geometry(default)
+        self._last = self.capture()
+        return result
+
+    def get_default_geometry(self, mode: str) -> QRect:
+        screen = self._primary()
+        area = screen.availableGeometry() if screen else QRect()
+        sizes = {"standard": (520, 720), "bar": (450, 48), "mini": (240, 120)}
+        width, height = sizes.get(mode, sizes["standard"])
+        if mode == "bar":
+            return QRect(area.center().x() - width // 2, area.top() + 20, width, height)
+        if mode == "mini":
+            return QRect(area.right() - width - 20, area.bottom() - height - 20, width, height)
+        return QRect(area.right() - width - 24, area.top() + max(0, (area.height() - height) // 2), width, height)
+
     def ensure_visible(self) -> QRect:
         if self.window.isMinimized() or self.window.isMaximized():
             return self.window.frameGeometry()

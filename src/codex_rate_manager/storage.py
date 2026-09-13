@@ -29,6 +29,8 @@ class Config:
     glow_enabled: bool = True
     animation_enabled: bool = True
     window: dict = field(default_factory=dict)
+    display_mode: str = "standard"
+    window_positions: dict = field(default_factory=dict)
 
 def load_config(data_dir: Path) -> Config:
     path = Path(data_dir) / "config.json"
@@ -49,9 +51,17 @@ def load_config(data_dir: Path) -> Config:
         elif key == "tray_style": valid = value in ("rings", "bars")
         elif key == "skin_id": valid = isinstance(value, str) and bool(re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", value))
         elif key == "window": valid = valid_window(value)
+        elif key == "display_mode": valid = value in ("standard", "bar", "mini")
+        elif key == "window_positions": valid = (isinstance(value, dict) and set(value).issubset({"standard", "bar", "mini"})
+                                                   and all(isinstance(v, dict) and valid_window(v) for v in value.values()))
         elif key == "reminders": valid = isinstance(value, list) and all(type(v) is int and v in {1, 5, 10, 30} for v in value)
         if valid: defaults[key] = value
-    return accessible_config(Config(**defaults))
+    config = Config(**defaults)
+    positions = dict(config.window_positions)
+    if config.window and "standard" not in positions:
+        positions["standard"] = config.window
+    config.window_positions = positions
+    return accessible_config(config)
 
 
 def accessible_config(config: Config) -> Config:
