@@ -169,6 +169,9 @@ class Monitor(threading.Thread):
         elif name == "history":
             if self.db:
                 self.signals.history.emit(value, self.db.history(value))
+        elif name == "graph_history":
+            if self.db:
+                self.signals.history.emit("graph", self.db.graph_history(value or "7d"))
         elif name == "save":
             config, webhook = value
             config = accessible_config(config)

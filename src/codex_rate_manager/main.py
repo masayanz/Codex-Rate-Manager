@@ -275,7 +275,7 @@ class Application:
 
     def on_history(self, kind, data):
         if self.history:
-            self.history.fill(kind, data)
+            self.history.fill("graph" if kind.startswith("graph") else kind, data)
 
     def on_result(self, kind, success, message):
         if kind == "Discord設定" and self.settings:
@@ -348,7 +348,7 @@ class Application:
     def open_history(self):
         if not self.history:
             self.history = HistoryDialog(self.window)
-            self.history.refresh.connect(lambda kind: self.monitor.command("history", kind))
+            self.history.refresh.connect(lambda kind: self.monitor.command("graph_history", kind.split(":", 1)[1]) if kind.startswith("graph_history:") else self.monitor.command("history", kind))
         self.history.show()
         self.history.raise_()
         self.history.reload()

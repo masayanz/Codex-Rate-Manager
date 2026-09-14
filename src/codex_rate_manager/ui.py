@@ -17,7 +17,8 @@ from .storage import Config, accessible_config
 from .meters import CompactRateBar, RingMeter, SegmentBar, tray_icon
 from .resources import resource_path
 from .skin_manager import SkinManager, default_stylesheet
-from .screenshot_service import ScreenshotController
+from .screenshot_service import ScreenshotController, copy_to_clipboard
+from .history_charts import HistoryChart
 
 STYLE = default_stylesheet()
 
@@ -587,6 +588,16 @@ class HistoryDialog(QDialog):
             table.horizontalHeader().setStretchLastSection(True)
             self.tables[key] = table
             self.tabs.addTab(table, title)
+        self.chart = HistoryChart()
+        self.requested_period = "7d"
+        self.chart_page = QWidget(); chart_layout = QVBoxLayout(self.chart_page)
+        controls = QHBoxLayout(); self.period = QComboBox()
+        self.period.addItem("24時間", "24h"); self.period.addItem("7日", "7d"); self.period.addItem("30日", "30d"); self.period.addItem("全期間", "all"); self.period.setCurrentIndex(1)
+        controls.addWidget(QLabel("期間")); controls.addWidget(self.period); controls.addStretch()
+        copy = QPushButton("グラフをコピー"); save = QPushButton("PNG保存…")
+        copy.clicked.connect(lambda: copy_to_clipboard(self.chart.rendered_pixmap()))
+        save.clicked.connect(self.save_chart); controls.addWidget(copy); controls.addWidget(save)
+        chart_layout.addLayout(controls); chart_layout.addWidget(self.chart); self.tabs.addTab(self.chart_page, "グラフ")
         layout.addWidget(self.tabs)
         hint = QLabel("最新300件を表示します。")
         hint.setObjectName("muted")
@@ -595,11 +606,18 @@ class HistoryDialog(QDialog):
         button.clicked.connect(self.reload)
         layout.addWidget(button)
         self.tabs.currentChanged.connect(self.reload)
+        self.period.currentIndexChanged.connect(self.reload)
 
     def reload(self):
-        self.refresh.emit(list(self.tables)[self.tabs.currentIndex()])
+        if self.tabs.currentWidget() is self.chart_page:
+            self.requested_period = self.period.currentData(); self.refresh.emit("graph_history:" + self.requested_period)
+        else:
+            self.refresh.emit(list(self.tables)[self.tabs.currentIndex()])
 
     def fill(self, kind, data):
+        if kind == "graph":
+            if data.get("period") == self.requested_period: self.chart.set_data(data)
+            return
         headers, rows = data
         if kind == "rates":
             headers = ["日時", "5時間残量", "週間残量", "状態"]
@@ -615,6 +633,10 @@ class HistoryDialog(QDialog):
             for j, value in enumerate(row):
                 table.setItem(i, j, QTableWidgetItem(str(value) if value is not None else "—"))
         table.resizeColumnsToContents()
+
+    def save_chart(self):
+        path, _ = QFileDialog.getSaveFileName(self, "グラフを保存", "rate-history.png", "PNG画像 (*.png)")
+        if path: self.chart.rendered_pixmap().save(path, "PNG")
 
 
 class DiagnosticsDialog(QDialog):

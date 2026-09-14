@@ -192,6 +192,26 @@ class Database:
             return ["日時", "5時間使用率", "5時間残量", "5時間リセット", "週間使用率", "週間残量", "週間リセット", "状態"], [(_date(r[0]), _pct(r[1]), _pct(r[2]), _date(r[3]), _pct(r[4]), _pct(r[5]), _date(r[6]), r[7]) for r in rows]
         rows = self.conn.execute("SELECT created_at,kind,message FROM events ORDER BY id DESC LIMIT ?",(int(limit),)).fetchall()
         return ["日時", "種類", "メッセージ"], [(_date(r[0]), r[1], r[2]) for r in rows]
+    def graph_history(self, period="7d", now=None):
+        """Return raw, chronologically ordered series and recovery markers."""
+        now = time.time() if now is None else float(now)
+        bounds = {"24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
+        since = None if period in ("all", "全期間") else now - bounds.get(period, 7 * 86400)
+        where = "" if since is None else " WHERE fetched_at >= ?"
+        args = () if since is None else (since,)
+        rates = self.conn.execute(
+            "SELECT fetched_at,five_remaining,weekly_remaining FROM rates" + where + " ORDER BY fetched_at ASC", args
+        ).fetchall()
+        recovery_where = "" if since is None else " WHERE timestamp >= ?"
+        recoveries = self.conn.execute(
+            "SELECT timestamp,event_type,previous_remaining,current_remaining,delta,five_hour_remaining,weekly_remaining "
+            "FROM recoveries" + recovery_where + " ORDER BY timestamp ASC", args
+        ).fetchall()
+        return {
+            "period": period,
+            "rates": [{"timestamp": float(r[0]), "five_remaining": r[1], "weekly_remaining": r[2]} for r in rates],
+            "recoveries": [{"timestamp": float(r[0]), "event_type": r[1], "previous_remaining": r[2], "current_remaining": r[3], "delta": r[4], "five_hour_remaining": r[5], "weekly_remaining": r[6]} for r in recoveries],
+        }
     def save_state(self, state: dict) -> None:
         self.conn.execute("INSERT OR REPLACE INTO monitor_state(id,data) VALUES(1,?)", (json.dumps(state),)); self.conn.commit()
     def load_state(self) -> dict:
