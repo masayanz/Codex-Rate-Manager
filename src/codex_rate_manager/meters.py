@@ -12,10 +12,6 @@ def rate_color(value, tokens=None):
 
 def tray_icon(five=None, weekly=None, state="CONNECTING", mode="rings", tokens=None):
     tokens = tokens or default_tokens()
-    if state == "CONNECTING":
-        return QIcon(str(resource_path("assets/app.ico")))
-    if state in {"CONNECTING", "DISCONNECTED", "ERROR", "VERIFYING", "WAITING_RESET"}:
-        five = weekly = None
     icon = QIcon()
     for size in (16, 20, 24, 32, 48, 64):
         pix = QPixmap(size, size)
@@ -28,20 +24,14 @@ def tray_icon(five=None, weekly=None, state="CONNECTING", mode="rings", tokens=N
         p.drawRoundedRect(QRectF(0, 0, 64, 64), 12, 12)
         for index, value in enumerate((five, weekly)):
             color = QColor(rate_color(value, tokens))
-            if mode == "bars":
-                p.setPen(Qt.PenStyle.NoPen)
-                p.setBrush(QColor(tokens.color("disabled")))
-                p.drawRoundedRect(QRectF(8, 12 + index * 25, 48, 15), 3, 3)
-                p.setBrush(color)
-                p.drawRoundedRect(QRectF(8, 12 + index * 25, max(4, 48 * (value or 0) / 100), 15), 3, 3)
-            else:
-                inset = 6 + index * 13
-                rect = QRectF(inset, inset, 64 - inset * 2, 64 - inset * 2)
-                p.setBrush(Qt.BrushStyle.NoBrush)
-                p.setPen(QPen(QColor(tokens.color("disabled")), 8))
-                p.drawEllipse(rect)
+            inset = 6 + index * 13
+            rect = QRectF(inset, inset, 64 - inset * 2, 64 - inset * 2)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(tokens.color("disabled")), 8))
+            p.drawEllipse(rect)
+            if value is not None:
                 p.setPen(QPen(color, 8))
-                p.drawArc(rect, 90 * 16, -int(360 * 16 * (value / 100 if value else 1 if value is None else .035)))
+                p.drawArc(rect, 90 * 16, -int(360 * 16 * max(0.0, min(100.0, value)) / 100))
         p.end()
         icon.addPixmap(pix)
     return icon

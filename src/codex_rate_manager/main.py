@@ -15,7 +15,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from .monitor import Monitor
-from .storage import Config, accessible_config
+from .storage import Config
 from dataclasses import replace
 from .meters import tray_icon
 from .skin_manager import SkinManager
@@ -59,12 +59,14 @@ class Application:
         self.skins = SkinManager(data_dir)
         self.app_icon = QIcon(str(resource_path("assets/app.ico")))
         self.app.setWindowIcon(self.app_icon)
+        # The tray icon belongs to the application, not to the main window.
+        # Create and register it before showing any window so autostart and
+        # hidden-start paths have the same entry point from the first frame.
+        self.tray = QSystemTrayIcon(self.app_icon, app)
+        self.tray.setToolTip("Codex Rate Manager\nCodexへ接続しています...")
         self.window = MainWindow(args.mock, self.skins)
         self.positions = WindowPositionManager(self.window)
         self.window.position_manager = self.positions
-        self.window.show()
-        self.tray = QSystemTrayIcon(self.app_icon, app)
-        self.tray.setToolTip("Codex Rate Manager\nCodexへ接続しています...")
         menu = QMenu()
         menu.addAction("Codex Rate Managerを開く", self.window.show_front)
         mode_menu = menu.addMenu("表示モード")
@@ -96,9 +98,9 @@ class Application:
         menu.addAction("終了", self.quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(lambda reason: self.window.show_front() if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick) else None)
-        # Wait for persisted visibility before registering the tray icon.
-        # Until then, closing the window must use the safety dialog.
-        self.window.tray_enabled = False
+        self.tray.show()
+        self.window.tray_enabled = True
+        self.window.show()
         self.monitor = Monitor(data_dir, args.mock)
         self.window.screenshot.failed.connect(lambda detail: self.monitor.command("screenshot_error", detail))
         self.positions.changed.connect(self.save_position)
@@ -157,7 +159,7 @@ class Application:
         five = snapshot.five_hour if snapshot else None
         week = snapshot.weekly if snapshot else None
         try:
-            icon = tray_icon(five.remaining if five else None, week.remaining if week else None, state, self.config.tray_style, self.skins.tokens)
+            icon = tray_icon(five.remaining if five else None, week.remaining if week else None, state, tokens=self.skins.tokens)
             self.tray.setIcon(icon if not icon.isNull() else self.app_icon)
         except Exception:
             self.tray.setIcon(self.app_icon)
@@ -201,27 +203,16 @@ class Application:
         self.positions.ensure_visible()
 
     def set_tray_visible(self, visible):
-        # Restore the window before removing its only other entry point.
-        if not visible and not self.window.isVisible():
-            self.window.show_front()
-        self.window.tray_enabled = visible
-        if visible:
+        # Kept as a compatibility shim for old callers/configurations. The
+        # application tray is intentionally always visible until quit().
+        self.window.tray_enabled = True
+        if not self.tray.isVisible():
             self.tray.show()
-        else:
-            self.tray.hide()
 
     def request_tray_visibility(self, visible, hide_after=False):
-        if self.tray_pending or not self.config_loaded:
-            return
-        self.tray_pending = True
-        self.hide_after_tray_save = hide_after
-        if not hide_after:
-            effective = accessible_config(replace(self.config, tray_enabled=visible)).tray_enabled
-            self.set_tray_visible(effective)
-        if self.settings:
-            self.settings.sync_tray(self.window.tray_enabled, True)
-            self.settings.feedback.setText("トレイ表示設定を保存しています...")
-        self.monitor.command("tray_visibility", visible)
+        self.set_tray_visible(True)
+        if hide_after and QSystemTrayIcon.isSystemTrayAvailable():
+            self.window.hide()
 
     def confirm_close_without_tray(self):
         if self.close_dialog and self.close_dialog.isVisible():
@@ -254,10 +245,9 @@ class Application:
             self.positions.restore_geometry(config.display_mode, config.window_positions.get(config.display_mode) or config.window)
         for key, action in self.mode_actions.items():
             action.setChecked(key == config.display_mode)
-        self.set_tray_visible(config.tray_enabled)
         self.toggle.setChecked(config.notifications_enabled)
         self.update_tray()
-        if self.first_config and not config.show_on_start and config.tray_enabled and QSystemTrayIcon.isSystemTrayAvailable():
+        if self.first_config and not config.show_on_start and QSystemTrayIcon.isSystemTrayAvailable():
             self.window.hide()
         self.first_config = False
         if self.settings:
@@ -266,7 +256,6 @@ class Application:
             blocked = combo.blockSignals(True)
             combo.setCurrentIndex(combo.findData(config.display_mode))
             combo.blockSignals(blocked)
-            self.settings.sync_tray(config.tray_enabled, self.tray_pending)
 
     def on_diagnostics(self, data):
         self.diagnostics_data = data
@@ -290,8 +279,8 @@ class Application:
         if kind == "トレイ表示":
             hide_after = self.hide_after_tray_save
             self.tray_pending = self.hide_after_tray_save = False
-            self.set_tray_visible(self.config.tray_enabled)
-            if success and hide_after and self.tray.isVisible() and QSystemTrayIcon.isSystemTrayAvailable():
+            self.set_tray_visible(True)
+            if success and hide_after and QSystemTrayIcon.isSystemTrayAvailable():
                 self.window.hide()
             elif not success or hide_after:
                 self.window.show_front()
@@ -331,8 +320,6 @@ class Application:
             self.settings.raise_()
             return
         self.settings = SettingsDialog(self.config, self.has_webhook, self.window, self.args.mock, self.skins)
-        self.settings.tray_visibility_changed.connect(self.request_tray_visibility)
-        self.settings.sync_tray(self.config.tray_enabled, self.tray_pending)
         self.settings.appearance_changed.connect(self.skins.apply)
         self.settings.display_mode.currentIndexChanged.connect(lambda: self.set_display_mode(self.settings.display_mode.currentData()))
         self.settings.finished.connect(self.apply_appearance)

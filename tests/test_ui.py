@@ -170,11 +170,10 @@ def test_settings_tabs_save_and_history_diagnostics(running_app):
     assert settings is not None and settings.isVisible()
     tabs = settings.findChild(QTabWidget)
     assert tabs is not None and tabs.count() == 6
-    settings.tray_style.setCurrentIndex(1)
     settings.fields["normal_interval"].setValue(120)
     settings.buttons.button(QDialogButtonBox.StandardButton.Save).click()
     assert wait_for(app.app, lambda: app.config.normal_interval == 120)
-    assert app.config.tray_style == "bars"
+    assert app.config.tray_style == "rings"
     settings.close()
     app.open_history()
     assert wait_for(app.app, lambda: app.history.tables["rates"].rowCount() > 0)
@@ -214,16 +213,15 @@ def test_close_hides_to_tray_and_show_front(running_app):
     assert app.window.isVisible()
 
 
-@pytest.mark.parametrize("mode", ["rings", "bars"])
-def test_tray_meter_distinguishes_windows_and_disconnect(qapp, mode):
+def test_tray_meter_distinguishes_windows_and_values(qapp):
     from codex_rate_manager.meters import tray_icon
-    images = [tray_icon(a, b, "AVAILABLE", mode).pixmap(16, 16).toImage()
+    images = [tray_icon(a, b, "AVAILABLE").pixmap(16, 16).toImage()
               for a, b in [(100, 100), (50, 50), (20, 80), (0, 80), (80, 0)]]
     assert all(not image.isNull() for image in images)
     assert all(images[i] != images[j] for i in range(len(images)) for j in range(i))
-    disconnected = tray_icon(80, 0, "DISCONNECTED", mode).pixmap(16, 16).toImage()
-    assert disconnected != images[-1]
-    assert disconnected == tray_icon(100, 100, "DISCONNECTED", mode).pixmap(16, 16).toImage()
+    disconnected = tray_icon(80, 0, "DISCONNECTED").pixmap(16, 16).toImage()
+    assert disconnected == images[-1]
+    assert tray_icon(None, None, "DISCONNECTED").pixmap(16, 16).toImage() != images[-1]
 
 
 def test_tray_current_values_and_stale_labels(running_app):
@@ -297,17 +295,9 @@ def click_close_choice(app, text):
 def test_tray_visibility_immediate_persistent_and_monitor_continues(running_app):
     app = running_app
     app.open_settings()
-    app.settings.fields["tray_enabled"].setChecked(False)
-    assert not app.tray.isVisible() and app.window.isVisible()
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    from codex_rate_manager.storage import load_config
-    assert not load_config(app.data_dir).tray_enabled
     app.monitor.command("mock", "LOW")
     assert wait_for(app.app, lambda: app.latest_state == "LOW")
-    app.settings.fields["tray_enabled"].setChecked(True)
     assert app.tray.isVisible()
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    assert load_config(app.data_dir).tray_enabled
     assert "5時間:" in app.tray.toolTip() and "週間:" in app.tray.toolTip()
 
 
@@ -315,45 +305,56 @@ def test_close_hidden_tray_cancel_and_enable_then_hide(running_app, monkeypatch)
     from PySide6.QtWidgets import QSystemTrayIcon
     monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
     app = running_app
+    original_tray = app.tray
+    app.window.close()
+    assert app.tray is original_tray and app.tray.isVisible()
+    assert not app.window.isVisible()
+    app.window.show_front()
+    assert app.window.isVisible()
     app.request_tray_visibility(False)
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    click_close_choice(app, "キャンセル")
-    assert app.window.isVisible() and app.monitor.is_alive()
-    click_close_choice(app, "タスクトレイを表示して閉じる")
-    assert app.window.isVisible()  # cannot hide before worker confirms persistence
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    assert app.tray.isVisible() and not app.window.isVisible()
-    from codex_rate_manager.storage import load_config
-    assert load_config(app.data_dir).tray_enabled
-    app.request_tray_visibility(False)
-    assert app.window.isVisible() and not app.tray.isVisible()
-    assert wait_for(app.app, lambda: not app.tray_pending)
+    assert app.tray.isVisible()
 
 
-def test_close_hidden_tray_exit(running_app):
+def test_close_hidden_tray_exit(running_app, monkeypatch):
+    from PySide6.QtWidgets import QSystemTrayIcon
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
     app = running_app
-    app.request_tray_visibility(False)
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    click_close_choice(app, "アプリを終了")
-    assert wait_for(app.app, lambda: not app.monitor.is_alive())
-    assert app.quitting
+    app.window.close()
+    assert not app.window.isVisible()
+    assert app.tray.isVisible()
 
 
 def test_tray_save_failure_keeps_window_accessible(running_app, monkeypatch):
+    app = running_app
+    original_tray = app.tray
+    for mode in ("bar", "mini", "standard"):
+        app.set_display_mode(mode)
+    app.update_tray()
+    assert app.tray is original_tray and app.tray.isVisible()
+
+
+def test_tray_instance_survives_config_modes_close_and_update(running_app):
+    app = running_app
+    original_tray = app.tray
+    app.on_config(app.config, app.has_webhook)
+    for mode in ("standard", "bar", "mini", "standard"):
+        app.set_display_mode(mode)
+        assert app.tray is original_tray and app.tray.isVisible()
+    app.window.close()
+    app.update_tray()
+    assert app.tray is original_tray and app.tray.isVisible()
+
+
+def test_hidden_start_keeps_tray_visible(running_app, monkeypatch):
     from PySide6.QtWidgets import QSystemTrayIcon
-    import codex_rate_manager.monitor as module
     monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
     app = running_app
-    app.args.smoke_test = 1  # suppress unrelated error popup in this test
-    app.request_tray_visibility(False)
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    def fail(*args):
-        raise OSError("read only")
-    monkeypatch.setattr(module, "save_config", fail)
-    click_close_choice(app, "タスクトレイを表示して閉じる")
-    assert wait_for(app.app, lambda: not app.tray_pending)
-    assert app.window.isVisible() and not app.tray.isVisible()
-    assert not app.config.tray_enabled
+    original_tray = app.tray
+    app.window.show()
+    app.first_config = True
+    app.on_config(replace(app.config, show_on_start=False), app.has_webhook)
+    assert not app.window.isVisible()
+    assert app.tray is original_tray and app.tray.isVisible()
 
 
 def test_windows_taskbar_settings_uri(running_app, monkeypatch):

@@ -407,8 +407,7 @@ class SettingsDialog(QDialog):
         auto.setEnabled(not mock)
         check(general, "show_on_start", "起動時にウィンドウを表示")
         general.addRow(QLabel("タスクトレイ"))
-        check(general, "tray_enabled", "タスクトレイアイコンを表示する").toggled.connect(self.tray_visibility_changed.emit)
-        hint = QLabel("表示切替は即時反映・保存されます。\nWindows側の表示位置はWindowsの設定で変更できます。")
+        hint = QLabel("アプリ起動中はタスクトレイアイコンを常時表示します。\nWindowsの通知領域で常時表示する場合は、Windowsのタスクバー設定からCodex Rate ManagerをONにしてください。")
         hint.setWordWrap(True)
         general.addRow(hint)
         self.display_mode = QComboBox()
@@ -483,11 +482,6 @@ class SettingsDialog(QDialog):
         self.skin_select.currentIndexChanged.connect(self.preview)
         self.fields["glow_enabled"].toggled.connect(self.preview)
         self.fields["animation_enabled"].toggled.connect(self.preview)
-        self.tray_style = QComboBox()
-        self.tray_style.addItem("二重リング（外周5時間・内周週間）", "rings")
-        self.tray_style.addItem("上下バー（上5時間・下週間）", "bars")
-        self.tray_style.setCurrentIndex(max(0, self.tray_style.findData(config.tray_style)))
-        appearance.addRow("タスクトレイ表示", self.tray_style)
         self.feedback = QLabel("")
         self.feedback.setWordWrap(True)
         layout.addWidget(self.feedback)
@@ -514,11 +508,6 @@ class SettingsDialog(QDialog):
         )
 
     def sync_tray(self, visible, pending=False):
-        box = self.fields["tray_enabled"]
-        previous = box.blockSignals(True)
-        box.setChecked(visible)
-        box.blockSignals(previous)
-        box.setEnabled(not pending)
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(not pending)
 
     def preview(self, *args):
@@ -553,14 +542,13 @@ class SettingsDialog(QDialog):
             return
         values = {key: widget.isChecked() if isinstance(widget, QCheckBox) else widget.value() for key, widget in self.fields.items()}
         values["skin_id"] = self.skin_select.currentData()
-        values["tray_style"] = self.tray_style.currentData()
+        values["tray_style"] = self.config.tray_style
         values["display_mode"] = self.display_mode.currentData()
         values["reminders"] = [minute for minute, box in self.reminders.items() if box.isChecked()]
         values["codex_path"] = self.codex_path.text().strip()
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)
         self.feedback.setText("設定を保存しています...")
         config = accessible_config(replace(self.config, **values))
-        self.sync_tray(config.tray_enabled, True)
         self.fields["show_on_start"].setChecked(config.show_on_start)
         self.save_requested.emit(config, self.value_webhook())
 
@@ -568,7 +556,6 @@ class SettingsDialog(QDialog):
         self.feedback.setText(message)
         self.test_button.setEnabled(True)
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(True)
-        self.fields["tray_enabled"].setEnabled(True)
 
 
 class HistoryDialog(QDialog):
