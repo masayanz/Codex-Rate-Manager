@@ -224,6 +224,38 @@ def test_tray_meter_distinguishes_windows_and_values(qapp):
     assert tray_icon(None, None, "DISCONNECTED").pixmap(16, 16).toImage() != images[-1]
 
 
+def test_tray_falls_back_to_app_icon_without_data_or_on_error(running_app, monkeypatch):
+    import codex_rate_manager.main as main_module
+    app = running_app
+    app.latest_snapshot = None
+    app.latest_state = "CONNECTING"
+    app.update_tray()
+    app_icon_image = app.app_icon.pixmap(32, 32).toImage()
+    assert not app.app_icon.isNull()
+    assert app.tray.icon().pixmap(32, 32).toImage() == app_icon_image
+
+    app.latest_state = "ERROR"
+    app.update_tray()
+    assert app.tray.icon().pixmap(32, 32).toImage() == app_icon_image
+
+    class NullIcon:
+        def isNull(self):
+            return True
+
+    monkeypatch.setattr(main_module, "tray_icon", lambda *args, **kwargs: NullIcon())
+    app.latest_state = "AVAILABLE"
+    app.latest_snapshot = SimpleNamespace(
+        five_hour=SimpleNamespace(remaining=70, reset_at=None),
+        weekly=SimpleNamespace(remaining=40, reset_at=None),
+    )
+    app.update_tray()
+    assert app.tray.icon().pixmap(32, 32).toImage() == app_icon_image
+
+    monkeypatch.setattr(main_module, "tray_icon", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("draw failed")))
+    app.update_tray()
+    assert app.tray.icon().pixmap(32, 32).toImage() == app_icon_image
+
+
 def test_tray_current_values_and_stale_labels(running_app):
     app = running_app
     assert "5時間:" in app.tray.toolTip() and "週間リセット:" in app.tray.toolTip()

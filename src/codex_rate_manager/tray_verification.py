@@ -15,6 +15,8 @@ class _TrayVerification:
         self.controller = controller
         self.started = time.monotonic()
         self.original_tray = controller.tray
+        self.initial_icon = controller.tray.icon().pixmap(32, 32).toImage()
+        self.app_icon = controller.app_icon.pixmap(32, 32).toImage()
         self.step = 0
         self.report = {"success": False, "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "startup": {}, "states": {}, "errors": []}
         self.timer = QTimer(controller.app)
@@ -48,11 +50,19 @@ class _TrayVerification:
             self.fail("system tray is unavailable")
             return
         if self.step == 0:
-            self.report["startup"] = {"config_loaded": c.config_loaded, "tray_visible": c.tray.isVisible(), "tray_available": True, "same_instance": c.tray is self.original_tray}
+            self.report["startup"] = {
+                "config_loaded": c.config_loaded,
+                "tray_visible": c.tray.isVisible(),
+                "tray_available": True,
+                "same_instance": c.tray is self.original_tray,
+                "app_icon_non_null": not c.app_icon.isNull(),
+                "fallback_icon_visible": not self.initial_icon.isNull() and self.initial_icon == self.app_icon,
+            }
             if not c.tray.isVisible():
                 self.fail("tray was not visible immediately after startup")
                 return
             self.record("startup_visible")
+            self.record("fallback_during_initialization", self.report["startup"]["fallback_icon_visible"])
             self.step = 1
             return
         if self.step == 1:

@@ -1,0 +1,76 @@
+Obtaining file:///D:/vswork2/Codex-Rate-Manager
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: PySide6<7,>=6.8 in .\.venv\Lib\site-packages (from codex-rate-manager==0.1.0) (6.11.2)
+Requirement already satisfied: requests<3,>=2.32 in .\.venv\Lib\site-packages (from codex-rate-manager==0.1.0) (2.34.2)
+Requirement already satisfied: windows-toasts<2,>=1.3 in .\.venv\Lib\site-packages (from codex-rate-manager==0.1.0) (1.3.1)
+Requirement already satisfied: pytest<10,>=8 in .\.venv\Lib\site-packages (from codex-rate-manager==0.1.0) (9.1.1)
+Requirement already satisfied: pyinstaller<7,>=6.11 in .\.venv\Lib\site-packages (from codex-rate-manager==0.1.0) (6.22.2)
+Requirement already satisfied: altgraph in .\.venv\Lib\site-packages (from pyinstaller<7,>=6.11->codex-rate-manager==0.1.0) (0.17.5)
+Requirement already satisfied: packaging>=22.0 in .\.venv\Lib\site-packages (from pyinstaller<7,>=6.11->codex-rate-manager==0.1.0) (26.3)
+Requirement already satisfied: pefile>=2022.5.30 in .\.venv\Lib\site-packages (from pyinstaller<7,>=6.11->codex-rate-manager==0.1.0) (2024.8.26)
+Requirement already satisfied: pyinstaller-hooks-contrib>=2026.6 in .\.venv\Lib\site-packages (from pyinstaller<7,>=6.11->codex-rate-manager==0.1.0) (2026.7)
+Requirement already satisfied: pywin32-ctypes>=0.2.1 in .\.venv\Lib\site-packages (from pyinstaller<7,>=6.11->codex-rate-manager==0.1.0) (0.2.3)
+Requirement already satisfied: setuptools>=42.0.0 in .\.venv\Lib\site-packages (from pyinstaller<7,>=6.11->codex-rate-manager==0.1.0) (84.0.0)
+Requirement already satisfied: shiboken6==6.11.2 in .\.venv\Lib\site-packages (from PySide6<7,>=6.8->codex-rate-manager==0.1.0) (6.11.2)
+Requirement already satisfied: PySide6_Essentials==6.11.2 in .\.venv\Lib\site-packages (from PySide6<7,>=6.8->codex-rate-manager==0.1.0) (6.11.2)
+Requirement already satisfied: PySide6_Addons==6.11.2 in .\.venv\Lib\site-packages (from PySide6<7,>=6.8->codex-rate-manager==0.1.0) (6.11.2)
+Requirement already satisfied: colorama>=0.4 in .\.venv\Lib\site-packages (from pytest<10,>=8->codex-rate-manager==0.1.0) (0.4.6)
+Requirement already satisfied: iniconfig>=1.0.1 in .\.venv\Lib\site-packages (from pytest<10,>=8->codex-rate-manager==0.1.0) (2.3.0)
+Requirement already satisfied: pluggy<2,>=1.5 in .\.venv\Lib\site-packages (from pytest<10,>=8->codex-rate-manager==0.1.0) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in .\.venv\Lib\site-packages (from pytest<10,>=8->codex-rate-manager==0.1.0) (2.21.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in .\.venv\Lib\site-packages (from requests<3,>=2.32->codex-rate-manager==0.1.0) (3.5.1)
+Requirement already satisfied: idna<4,>=2.5 in .\.venv\Lib\site-packages (from requests<3,>=2.32->codex-rate-manager==0.1.0) (3.19)
+Requirement already satisfied: urllib3<3,>=1.26 in .\.venv\Lib\site-packages (from requests<3,>=2.32->codex-rate-manager==0.1.0) (2.7.0)
+Requirement already satisfied: certifi>=2023.5.7 in .\.venv\Lib\site-packages (from requests<3,>=2.32->codex-rate-manager==0.1.0) (2026.7.22)
+Requirement already satisfied: winrt-runtime~=3.0 in .\.venv\Lib\site-packages (from windows-toasts<2,>=1.3->codex-rate-manager==0.1.0) (3.2.1)
+Requirement already satisfied: winrt-Windows.Data.Xml.Dom~=3.0 in .\.venv\Lib\site-packages (from windows-toasts<2,>=1.3->codex-rate-manager==0.1.0) (3.2.1)
+Requirement already satisfied: winrt-Windows.Foundation~=3.0 in .\.venv\Lib\site-packages (from windows-toasts<2,>=1.3->codex-rate-manager==0.1.0) (3.2.1)
+Requirement already satisfied: winrt-Windows.Foundation.Collections~=3.0 in .\.venv\Lib\site-packages (from windows-toasts<2,>=1.3->codex-rate-manager==0.1.0) (3.2.1)
+Requirement already satisfied: winrt-Windows.UI.Notifications~=3.0 in .\.venv\Lib\site-packages (from windows-toasts<2,>=1.3->codex-rate-manager==0.1.0) (3.2.1)
+Requirement already satisfied: typing_extensions>=4.12.2 in .\.venv\Lib\site-packages (from winrt-runtime~=3.0->windows-toasts<2,>=1.3->codex-rate-manager==0.1.0) (4.16.0)
+Building wheels for collected packages: codex-rate-manager
+  Building editable for codex-rate-manager (pyproject.toml): started
+  Building editable for codex-rate-manager (pyproject.toml): finished with status 'done'
+  Created wheel for codex-rate-manager: filename=codex_rate_manager-0.1.0-0.editable-py3-none-any.whl size=1778 sha256=6980d581b2a230e8ae935b3bbda842efeca20b82ee6a375d76b4c3518010e8cd
+  Stored in directory: C:\Users\admin\AppData\Local\Temp\pip-ephem-wheel-cache-5woxppkj\wheels\c2\55\e5\a3386da7b39b8dc250ee0d1a0593bec757e62b50cf3e5cb61f
+Successfully built codex-rate-manager
+Installing collected packages: codex-rate-manager
+  Attempting uninstall: codex-rate-manager
+    Found existing installation: codex-rate-manager 0.1.0
+    Uninstalling codex-rate-manager-0.1.0:
+      Successfully uninstalled codex-rate-manager-0.1.0
+Successfully installed codex-rate-manager-0.1.0
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\vswork2\Codex-Rate-Manager
+configfile: pyproject.toml
+testpaths: tests
+collected 134 items
+
+tests\test_core.py .....                                                 [  3%]
+tests\test_monitor.py ...                                                [  5%]
+tests\test_notification_recovery.py ................                     [ 17%]
+tests\test_rate_increase.py ................                             [ 29%]
+tests\test_recovery.py .............................                     [ 51%]
+tests\test_rpc.py ...                                                    [ 53%]
+tests\test_screenshot.py .......                                         [ 58%]
+tests\test_services.py ...............                                   [ 70%]
+tests\test_skins.py ....                                                 [ 73%]
+tests\test_startup.py ..                                                 [ 74%]
+tests\test_ui.py .........s...............                               [ 93%]
+tests\test_window_position.py .........                                  [100%]
+
+================= 133 passed, 1 skipped in 108.28s (0:01:48) ==================
+Python executable: D:\vswork2\Codex-Rate-Manager\.venv\Scripts\python.exe
+Python version: 3.13.15 (tags/v3.13.15:4061bc4, Aug  5 2026, 13:05:39) [MSC v.1944 64 bit (AMD64)]
+sys.base_prefix: C:\Users\admin\AppData\Local\Programs\Python\Python313
+PySide6 version: 6.11.2
+PyInstaller version: 6.22.2
+ê∂ê¨êÊ: dist\CodexRateManager.exe

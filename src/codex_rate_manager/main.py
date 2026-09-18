@@ -158,11 +158,24 @@ class Application:
         snapshot, state = self.latest_snapshot, self.latest_state
         five = snapshot.five_hour if snapshot else None
         week = snapshot.weekly if snapshot else None
-        try:
-            icon = tray_icon(five.remaining if five else None, week.remaining if week else None, state, tokens=self.skins.tokens)
-            self.tray.setIcon(icon if not icon.isNull() else self.app_icon)
-        except Exception:
+        five_value = five.remaining if five else None
+        week_value = week.remaining if week else None
+        # Keep the real app icon while the monitor is initializing, has no
+        # snapshot yet, or cannot report a usable rate. A tiny disabled ring
+        # can look like a missing notification-area icon at 16px.
+        use_fallback = (
+            snapshot is None
+            or (five_value is None and week_value is None)
+            or state in {"CONNECTING", "ERROR"}
+        )
+        if use_fallback:
             self.tray.setIcon(self.app_icon)
+        else:
+            try:
+                icon = tray_icon(five_value, week_value, state, tokens=self.skins.tokens)
+                self.tray.setIcon(icon if not icon.isNull() else self.app_icon)
+            except Exception:
+                self.tray.setIcon(self.app_icon)
         five_text = f"{five.remaining:g}%" if five else "未取得"
         week_text = f"{week.remaining:g}%" if week else "未取得"
         stale = state in {"CONNECTING", "DISCONNECTED", "VERIFYING", "ERROR", "WAITING_RESET"}

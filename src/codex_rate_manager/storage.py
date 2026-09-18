@@ -200,7 +200,7 @@ class Database:
         where = "" if since is None else " WHERE fetched_at >= ?"
         args = () if since is None else (since,)
         rates = self.conn.execute(
-            "SELECT fetched_at,five_remaining,weekly_remaining FROM rates" + where + " ORDER BY fetched_at ASC", args
+            "SELECT fetched_at,five_used,five_remaining,five_reset,weekly_used,weekly_remaining,weekly_reset,state FROM rates" + where + " ORDER BY fetched_at ASC", args
         ).fetchall()
         recovery_where = "" if since is None else " WHERE timestamp >= ?"
         recoveries = self.conn.execute(
@@ -209,7 +209,7 @@ class Database:
         ).fetchall()
         return {
             "period": period,
-            "rates": [{"timestamp": float(r[0]), "five_remaining": r[1], "weekly_remaining": r[2]} for r in rates],
+            "rates": [{"timestamp": float(r[0]), "fetched_at": float(r[0]), "five_used": _number(r[1]), "five_remaining": _number(r[2]), "five_reset": _number(r[3]), "weekly_used": _number(r[4]), "weekly_remaining": _number(r[5]), "weekly_reset": _number(r[6]), "state": r[7]} for r in rates],
             "recoveries": [{"timestamp": float(r[0]), "event_type": r[1], "previous_remaining": r[2], "current_remaining": r[3], "delta": r[4], "five_hour_remaining": r[5], "weekly_remaining": r[6]} for r in recoveries],
         }
     def save_state(self, state: dict) -> None:
@@ -224,3 +224,6 @@ def _jsonable(x):
     if hasattr(x,"__dict__"): return {k:_jsonable(v) for k,v in vars(x).items()}
     if isinstance(x,(list,tuple)): return [_jsonable(v) for v in x]
     return x
+
+def _number(value):
+    return None if value is None else float(value)

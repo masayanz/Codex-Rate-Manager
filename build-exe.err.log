@@ -1,0 +1,101 @@
+527 INFO: PyInstaller: 6.22.2, contrib hooks: 2026.7
+528 INFO: Python: 3.13.15
+592 INFO: Platform: Windows-11-10.0.26200-SP0
+593 INFO: Python environment: D:\vswork2\Codex-Rate-Manager\.venv
+597 INFO: Removing temporary files and cleaning cache in C:\Users\admin\AppData\Local\pyinstaller
+3034 INFO: Module search paths (PYTHONPATH):
+['D:\\vswork2\\Codex-Rate-Manager',
+ 'C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python313\\python313.zip',
+ 'C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python313\\DLLs',
+ 'C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python313\\Lib',
+ 'C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python313',
+ 'D:\\vswork2\\Codex-Rate-Manager\\.venv',
+ 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages',
+ 'D:\\vswork2\\Codex-Rate-Manager\\src',
+ 'D:\\vswork2\\Codex-Rate-Manager\\scripts',
+ 'D:\\vswork2\\Codex-Rate-Manager\\src']
+4059 INFO: Appending 'datas' from .spec
+4063 INFO: checking Analysis
+4064 INFO: Building Analysis because Analysis-00.toc is non existent
+4064 INFO: Looking for Python shared library...
+4065 INFO: Using Python shared library: C:\Users\admin\AppData\Local\Programs\Python\Python313\python313.dll
+4065 INFO: Running Analysis Analysis-00.toc
+4065 INFO: Target bytecode optimization level: 0
+4066 INFO: Initializing module dependency graph...
+4070 INFO: Initializing module graph hook caches...
+4128 INFO: Analyzing modules for base_library.zip ...
+8167 INFO: Processing standard module hook 'hook-encodings.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9336 INFO: Processing standard module hook 'hook-math.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9903 INFO: Processing standard module hook 'hook-heapq.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13045 INFO: Processing standard module hook 'hook-pickle.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16468 INFO: Caching module dependency graph...
+16557 INFO: Analyzing D:\vswork2\Codex-Rate-Manager\scripts\entry.py
+16725 INFO: Processing standard module hook 'hook-platform.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16818 INFO: Processing standard module hook 'hook-sysconfig.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16831 INFO: Processing standard module hook 'hook-_ctypes.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16927 INFO: Processing standard module hook 'hook-PySide6.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17437 INFO: Processing standard module hook 'hook-shiboken6.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17913 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+22963 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+29253 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+54180 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+59467 INFO: Processing standard module hook 'hook-sqlite3.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+60333 INFO: Processing standard module hook 'hook-urllib3.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+60565 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+60568 INFO: SetuptoolsInfo: initializing cached setuptools info...
+61927 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+61943 INFO: Processing standard module hook 'hook-setuptools.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+61973 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+62037 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+62039 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+62064 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+62065 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+62383 INFO: Processing standard module hook 'hook-_osx_support.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+62393 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+62998 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+63197 INFO: Processing standard module hook 'hook-xml.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+64640 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+65302 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+65306 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+67104 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+67105 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+68335 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+68336 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+69712 INFO: Processing standard module hook 'hook-certifi.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+69833 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+72530 INFO: Processing standard module hook 'hook-difflib.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+73233 INFO: Processing module hooks (post-graph stage)...
+74150 INFO: Processing standard module hook 'hook-webbrowser.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+75154 INFO: Performing binary vs. data reclassification (148 entries)
+75219 INFO: Looking for ctypes DLLs
+75295 INFO: Analyzing run-time hooks ...
+75299 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+75304 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+75312 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+75318 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+75321 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+75326 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+75330 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+75353 INFO: Creating base_library.zip...
+75400 INFO: Looking for dynamic libraries
+77354 INFO: Extra DLL search directories (AddDllDirectory): ['D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\shiboken6']
+77355 INFO: Extra DLL search directories (PATH): ['D:\\vswork2\\Codex-Rate-Manager\\.venv\\Lib\\site-packages\\PySide6']
+79451 INFO: Warnings written to D:\vswork2\Codex-Rate-Manager\build\CodexRateManager\warn-CodexRateManager.txt
+79552 INFO: Graph cross-reference written to D:\vswork2\Codex-Rate-Manager\build\CodexRateManager\xref-CodexRateManager.html
+79611 INFO: checking PYZ
+79931 INFO: checking PKG
+79968 INFO: Building because toc changed
+79969 INFO: Building PKG (CArchive) CodexRateManager.pkg
+98455 INFO: Building PKG (CArchive) CodexRateManager.pkg completed successfully.
+98465 INFO: Bootloader D:\vswork2\Codex-Rate-Manager\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+98466 INFO: checking EXE
+98485 INFO: Building because toc changed
+98485 INFO: Building EXE from EXE-00.toc
+98494 INFO: Copying bootloader EXE to D:\vswork2\Codex-Rate-Manager\dist\CodexRateManager.exe
+98552 INFO: Copying icon to EXE
+98617 INFO: Copying 0 resources to EXE
+98617 INFO: Embedding manifest in EXE
+98677 INFO: Appending PKG archive to EXE
+99020 INFO: Fixing EXE headers
+99822 INFO: Building EXE from EXE-00.toc completed successfully.
+99830 INFO: Build complete! The results are available in: D:\vswork2\Codex-Rate-Manager\dist
