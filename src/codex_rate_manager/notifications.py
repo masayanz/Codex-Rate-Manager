@@ -75,14 +75,31 @@ class NotificationManager:
         if event.kind == "internal":
             self.log("NOTIFICATION_SKIPPED", f"event_type={event.event_type} notification_event_key={event.key} reason=still_limited_or_coalesced")
             return
+
+        # 自動通知は「残量が前回より増えた」回復イベントだけに限定する。
+        # limit / low / reminder / resetAt到達 / state変化だけでは通知しない。
+        is_recovery = (
+            event.event_type in {"RATE_5H_RECOVERED", "RATE_WEEKLY_RECOVERED"}
+            and event.recovery is not None
+            and float(event.recovery.get("delta", 0) or 0) > 0
+        )
+
+        if event.kind != "test" and not is_recovery:
+            self.log(
+                "NOTIFICATION_SKIPPED",
+                f"event_type={event.event_type or event.kind} notification_event_key={event.key} "
+                "reason=no_rate_increase",
+            )
+            return
+
         for channel in ("WINDOWS", "DISCORD"):
             if event.kind == "test":
                 enabled = channel == "DISCORD"
                 reason = "manual_test"
             else:
                 enabled = config.notifications_enabled and (channel == "WINDOWS" or config.discord_enabled)
-                enabled = enabled and (event.kind == "reminder" or getattr(config, f"{channel.lower()}_{event.kind}", False))
-                reason = "enabled" if enabled else "settings_disabled"
+                enabled = enabled and getattr(config, f"{channel.lower()}_reset", False)
+                reason = "recovery_increase" if enabled else "settings_disabled"
             self.log("NOTIFICATION_ROUTING", f"event_type={event.event_type or event.kind} notification_event_key={event.key} channel={channel} notifications_enabled={config.notifications_enabled} discord_enabled={config.discord_enabled} discord_reset_enabled={config.discord_reset} enabled={enabled} reason={reason}")
             if enabled:
                 self.enqueue(channel, event, url)

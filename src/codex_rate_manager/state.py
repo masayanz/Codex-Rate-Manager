@@ -153,7 +153,7 @@ class Engine:
         self._remaining: dict[str, float] = {}
         self.comparison: dict[str, Any] = {}
 
-    def accept(self, snapshot: Snapshot, threshold: float = 20, recovery_threshold: float = 1.0) -> list[Event]:
+    def accept(self, snapshot: Snapshot, threshold: float = 20, recovery_threshold: float = 0.0) -> list[Event]:
         if snapshot.account_key and self._account_key and snapshot.account_key != self._account_key:
             self.__init__()
         if snapshot.account_key:
